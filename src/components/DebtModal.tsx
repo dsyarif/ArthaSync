@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   ArrowRightLeft,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { AssetAccount, DebtPartyType, DebtRecord, DebtScope, DebtType, FamilyMember } from '../types/finance';
 import {
@@ -44,6 +45,7 @@ interface DebtModalProps {
   assets: AssetAccount[];
   groupId: string;
   editingDebt?: DebtRecord | null;
+  onDelete?: (id: string) => void;
 }
 
 export const DebtModal: React.FC<DebtModalProps> = ({
@@ -54,6 +56,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({
   assets,
   groupId,
   editingDebt,
+  onDelete,
 }) => {
   const [scope, setScope] = useState<DebtScope>('perorangan');
   const [type, setType] = useState<DebtType>('piutang');
@@ -571,22 +574,40 @@ export const DebtModal: React.FC<DebtModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className={`px-5 py-2 rounded-xl text-white text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${
-                type === 'piutang' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
-              }`}
-            >
-              {editingDebt ? 'Simpan Perubahan' : 'Catat Sekarang'}
-            </button>
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+            {editingDebt && onDelete ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Yakin ingin menghapus catatan "${editingDebt.description}"?`)) {
+                    onDelete(editingDebt.id);
+                    onClose();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className={`px-5 py-2 rounded-xl text-white text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${
+                  type === 'piutang' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                {editingDebt ? 'Simpan Perubahan' : 'Catat Sekarang'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

@@ -199,6 +199,7 @@ router.post('/sync', (req: Request, res: Response) => {
       deletedTxIds = [],
       deletedCatIds = [],
       deletedGrpIds = [],
+      deletedDebtIds = [],
     } = req.body;
     let hasChanges = false;
 
@@ -263,25 +264,29 @@ router.post('/sync', (req: Request, res: Response) => {
     cloudStore.groups = Array.from(grpMap.values());
 
     // Merge debts
-    if (Array.isArray(debts) && debts.length > 0) {
-      if (!cloudStore.debts) cloudStore.debts = [];
-      const debtMap = new Map<string, any>(cloudStore.debts.map((d: any) => [d.id, d]));
-      for (const clientDebt of debts) {
-        if (clientDebt.isDeleted) {
-          if (debtMap.has(clientDebt.id)) {
-            debtMap.delete(clientDebt.id);
-            hasChanges = true;
-          }
-          continue;
-        }
-        const existing = debtMap.get(clientDebt.id);
-        if (!existing || (clientDebt.updatedAt && clientDebt.updatedAt > (existing.updatedAt || 0))) {
-          debtMap.set(clientDebt.id, clientDebt);
+    if (!cloudStore.debts) cloudStore.debts = [];
+    const debtMap = new Map<string, any>(cloudStore.debts.map((d: any) => [d.id, d]));
+    for (const delId of deletedDebtIds) {
+      if (debtMap.has(delId)) {
+        debtMap.delete(delId);
+        hasChanges = true;
+      }
+    }
+    for (const clientDebt of debts) {
+      if (clientDebt.isDeleted || deletedDebtIds.includes(clientDebt.id)) {
+        if (debtMap.has(clientDebt.id)) {
+          debtMap.delete(clientDebt.id);
           hasChanges = true;
         }
+        continue;
       }
-      cloudStore.debts = Array.from(debtMap.values());
+      const existing = debtMap.get(clientDebt.id);
+      if (!existing || (clientDebt.updatedAt && clientDebt.updatedAt > (existing.updatedAt || 0))) {
+        debtMap.set(clientDebt.id, clientDebt);
+        hasChanges = true;
+      }
     }
+    cloudStore.debts = Array.from(debtMap.values());
 
     if (hasChanges) {
       cloudStore.lastSyncedAt = Date.now();
@@ -305,6 +310,36 @@ router.post('/clear-transactions', (req: Request, res: Response) => {
   cloudStore.lastSyncedAt = Date.now();
   saveStore(cloudStore);
   res.json({ success: true, message: 'Semua transaksi berhasil dibersihkan' });
+});
+
+// DELETE /api/debts/:id
+router.delete('/debts/:id', (req: Request, res: Response) => {
+  cloudStore = loadStore();
+  if (!cloudStore.debts) cloudStore.debts = [];
+  const { id } = req.params;
+  const initialCount = cloudStore.debts.length;
+  cloudStore.debts = cloudStore.debts.filter((d: any) => d.id !== id);
+  const deleted = cloudStore.debts.length < initialCount;
+  if (deleted) {
+    cloudStore.lastSyncedAt = Date.now();
+    saveStore(cloudStore);
+  }
+  res.json({ success: true, deleted });
+});
+
+// DELETE /api/transactions/:id
+router.delete('/transactions/:id', (req: Request, res: Response) => {
+  cloudStore = loadStore();
+  if (!cloudStore.transactions) cloudStore.transactions = [];
+  const { id } = req.params;
+  const initialCount = cloudStore.transactions.length;
+  cloudStore.transactions = cloudStore.transactions.filter((t: any) => t.id !== id);
+  const deleted = cloudStore.transactions.length < initialCount;
+  if (deleted) {
+    cloudStore.lastSyncedAt = Date.now();
+    saveStore(cloudStore);
+  }
+  res.json({ success: true, deleted });
 });
 
 // POST /api/reset

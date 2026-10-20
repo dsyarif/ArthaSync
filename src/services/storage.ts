@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   DELETED_TX_IDS: 'arthasync_deleted_tx_ids_v1',
   DELETED_CAT_IDS: 'arthasync_deleted_cat_ids_v1',
   DELETED_GRP_IDS: 'arthasync_deleted_grp_ids_v1',
+  DELETED_DEBT_IDS: 'arthasync_deleted_debt_ids_v1',
   DEBTS: 'arthasync_debts_v1',
 };
 
@@ -412,6 +413,21 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.DELETED_GRP_IDS, JSON.stringify(Array.from(set)));
   }
 
+  public static getDeletedDebtIds(): string[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DELETED_DEBT_IDS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  public static addDeletedDebtId(id: string) {
+    const set = new Set(this.getDeletedDebtIds());
+    set.add(id);
+    localStorage.setItem(STORAGE_KEYS.DELETED_DEBT_IDS, JSON.stringify(Array.from(set)));
+  }
+
   public static deleteTransaction(id: string): boolean {
     const current = this.getTransactions();
     const item = current.find((t) => t.id === id);
@@ -700,6 +716,12 @@ export class StorageService {
 
     const filtered = current.filter((d) => d.id !== id);
     this.saveDebts(filtered);
+    this.addDeletedDebtId(id);
+
+    if (this.syncState.isOnline) {
+      fetch(`/api/debts/${id}`, { method: 'DELETE' }).catch(() => {});
+    }
+
     this.triggerCloudSync();
     return true;
   }
@@ -1146,6 +1168,7 @@ export class StorageService {
     localStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
     localStorage.removeItem(STORAGE_KEYS.DELETED_CAT_IDS);
     localStorage.removeItem(STORAGE_KEYS.DELETED_GRP_IDS);
+    localStorage.removeItem(STORAGE_KEYS.DELETED_DEBT_IDS);
     localStorage.removeItem(STORAGE_KEYS.PENDING_QUEUE);
 
     if (this.syncState.isOnline) {
@@ -1158,6 +1181,7 @@ export class StorageService {
     this.saveGroups(DEFAULT_GROUPS);
     this.setCurrentGroupId(DEFAULT_GROUPS[0].id);
     this.saveTransactions([]);
+    this.saveDebts(DEFAULT_DEBTS);
     this.notify();
     return true;
   }
@@ -1216,6 +1240,7 @@ export class StorageService {
           deletedTxIds: this.getDeletedTxIds(),
           deletedCatIds: this.getDeletedCatIds(),
           deletedGrpIds: this.getDeletedGrpIds(),
+          deletedDebtIds: this.getDeletedDebtIds(),
         }),
       });
 
@@ -1250,6 +1275,7 @@ export class StorageService {
     const deletedTxSet = new Set(this.getDeletedTxIds());
     const deletedCatSet = new Set(this.getDeletedCatIds());
     const deletedGrpSet = new Set(this.getDeletedGrpIds());
+    const deletedDebtSet = new Set(this.getDeletedDebtIds());
 
     // Merge transactions
     if (Array.isArray(remoteData.transactions)) {
@@ -1313,7 +1339,7 @@ export class StorageService {
     if (Array.isArray(remoteData.debts)) {
       const debtMap = new Map<string, DebtRecord>(this.getDebts().map((d) => [d.id, d]));
       for (const remoteDebt of remoteData.debts) {
-        if (remoteDebt.isDeleted) {
+        if (deletedDebtSet.has(remoteDebt.id) || remoteDebt.isDeleted) {
           debtMap.delete(remoteDebt.id);
           continue;
         }
@@ -1322,7 +1348,10 @@ export class StorageService {
           debtMap.set(remoteDebt.id, remoteDebt);
         }
       }
-      localStorage.setItem(STORAGE_KEYS.DEBTS, JSON.stringify(Array.from(debtMap.values())));
+      localStorage.setItem(
+        STORAGE_KEYS.DEBTS,
+        JSON.stringify(Array.from(debtMap.values()).filter((d) => !deletedDebtSet.has(d.id)))
+      );
     }
 
     this.notify();

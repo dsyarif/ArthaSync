@@ -658,6 +658,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
         assets={assets}
         groupId={currentGroup.id}
         editingDebt={editingDebt}
+        onDelete={onDeleteDebt}
       />
 
       {/* Payment / Installment Modal */}

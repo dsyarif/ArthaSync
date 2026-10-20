@@ -348,6 +348,7 @@ app.post('/api/sync', (req, res) => {
       deletedTxIds = [],
       deletedCatIds = [],
       deletedGrpIds = [],
+      deletedDebtIds = [],
     } = req.body;
     let hasChanges = false;
 
@@ -418,25 +419,29 @@ app.post('/api/sync', (req, res) => {
     cloudStore.groups = Array.from(grpMap.values());
 
     // Merge debts
-    if (Array.isArray(debts) && debts.length > 0) {
-      if (!cloudStore.debts) cloudStore.debts = [];
-      const debtMap = new Map<string, any>(cloudStore.debts.map((d: any) => [d.id, d]));
-      for (const clientDebt of debts) {
-        if (clientDebt.isDeleted) {
-          if (debtMap.has(clientDebt.id)) {
-            debtMap.delete(clientDebt.id);
-            hasChanges = true;
-          }
-          continue;
-        }
-        const existing = debtMap.get(clientDebt.id);
-        if (!existing || (clientDebt.updatedAt && clientDebt.updatedAt > (existing.updatedAt || 0))) {
-          debtMap.set(clientDebt.id, clientDebt);
+    if (!cloudStore.debts) cloudStore.debts = [];
+    const debtMap = new Map<string, any>(cloudStore.debts.map((d: any) => [d.id, d]));
+    for (const delId of deletedDebtIds) {
+      if (debtMap.has(delId)) {
+        debtMap.delete(delId);
+        hasChanges = true;
+      }
+    }
+    for (const clientDebt of debts) {
+      if (clientDebt.isDeleted || deletedDebtIds.includes(clientDebt.id)) {
+        if (debtMap.has(clientDebt.id)) {
+          debtMap.delete(clientDebt.id);
           hasChanges = true;
         }
+        continue;
       }
-      cloudStore.debts = Array.from(debtMap.values());
+      const existing = debtMap.get(clientDebt.id);
+      if (!existing || (clientDebt.updatedAt && clientDebt.updatedAt > (existing.updatedAt || 0))) {
+        debtMap.set(clientDebt.id, clientDebt);
+        hasChanges = true;
+      }
     }
+    cloudStore.debts = Array.from(debtMap.values());
 
     if (hasChanges) {
       cloudStore.lastSyncedAt = Date.now();
@@ -464,6 +469,25 @@ app.delete('/api/transactions/:id', (req, res) => {
   const initialCount = cloudStore.transactions.length;
   cloudStore.transactions = cloudStore.transactions.filter((t: any) => t.id !== id);
   const deleted = cloudStore.transactions.length < initialCount;
+  if (deleted) {
+    cloudStore.lastSyncedAt = Date.now();
+    saveStore(cloudStore);
+    broadcastChange({
+      type: 'SYNC_UPDATE',
+      serverTime: cloudStore.lastSyncedAt,
+      data: cloudStore,
+    });
+  }
+  res.json({ success: true, deleted });
+});
+
+// Explicit delete endpoint for single debt
+app.delete('/api/debts/:id', (req, res) => {
+  const { id } = req.params;
+  if (!cloudStore.debts) cloudStore.debts = [];
+  const initialCount = cloudStore.debts.length;
+  cloudStore.debts = cloudStore.debts.filter((d: any) => d.id !== id);
+  const deleted = cloudStore.debts.length < initialCount;
   if (deleted) {
     cloudStore.lastSyncedAt = Date.now();
     saveStore(cloudStore);

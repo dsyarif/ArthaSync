@@ -147,3 +147,37 @@ test('Internal debt affects balances of both borrower and lender on creation and
   assert.equal(ibuAcc.balance, 3000000, 'Saldo Ibu harus kembali ke Rp 3.000.000 setelah cicilan dihapus');
   assert.equal(ayahAcc.balance, 4000000, 'Saldo Ayah harus kembali ke Rp 4.000.000 setelah cicilan dihapus');
 });
+
+test('deleteDebt permanently removes debt and registers tombstone to prevent resurrection on cloud sync', () => {
+  StorageService.saveDebts([]);
+  const debt = StorageService.addDebt({
+    groupId: 'grp-test-1',
+    type: 'utang',
+    partyType: 'external',
+    memberId: 'mem-1',
+    otherPersonName: 'Teman',
+    amount: 500000,
+    date: '2026-10-20',
+    description: 'Pinjaman sementara',
+  }, { affectAssetBalance: false });
+
+  assert.equal(StorageService.getDebts().length, 1);
+  const debtId = debt.id;
+
+  // Delete debt
+  const success = StorageService.deleteDebt(debtId);
+  assert.equal(success, true);
+  assert.equal(StorageService.getDebts().length, 0);
+
+  // Deleted debt id must be tracked in deletedDebtIds
+  const deletedIds = StorageService.getDeletedDebtIds();
+  assert.ok(deletedIds.includes(debtId), 'deletedDebtIds must include the deleted debt id');
+
+  // Simulate remote sync returning the old deleted debt
+  (StorageService as any).mergeRemoteStore({
+    debts: [debt],
+  });
+
+  // Debt must still NOT be restored because of tombstone check
+  assert.equal(StorageService.getDebts().length, 0, 'Deleted debt must not be restored by remote sync');
+});
