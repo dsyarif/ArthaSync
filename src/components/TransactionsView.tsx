@@ -41,6 +41,8 @@ interface TransactionsViewProps {
   onOpenPrintReport: () => void;
   selectedYear?: number;
   selectedMonth?: number;
+  selectedMemberFilter?: string;
+  onSelectMemberFilter?: (memberId: string) => void;
   onDuplicateTransaction?: (tx: Transaction) => void;
   onQuickSaveTransaction?: (txData: any) => void;
   onInlineUpdateTransaction?: (id: string, updates: Partial<Transaction>) => void;
@@ -56,13 +58,20 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   onOpenPrintReport,
   selectedYear,
   selectedMonth,
+  selectedMemberFilter,
+  onSelectMemberFilter,
   onDuplicateTransaction,
   onQuickSaveTransaction,
   onInlineUpdateTransaction,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedMember, setSelectedMember] = useState('all');
+  const [localSelectedMember, setLocalSelectedMember] = useState('all');
+  const currentMemberFilter = selectedMemberFilter !== undefined ? selectedMemberFilter : localSelectedMember;
+  const setMemberFilter = (val: string) => {
+    setLocalSelectedMember(val);
+    if (onSelectMemberFilter) onSelectMemberFilter(val);
+  };
   const [selectedType, setSelectedType] = useState<'all' | 'expense' | 'income'>('all');
   const [selectedAsset, setSelectedAsset] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -103,7 +112,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     groupId: currentGroup.id,
     searchQuery,
     categoryId: selectedCategory,
-    memberId: selectedMember,
+    memberId: currentMemberFilter,
     type: selectedType,
     assetId: selectedAsset,
     startDate,
@@ -135,7 +144,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedCategory('all');
-    setSelectedMember('all');
+    setMemberFilter('all');
     setSelectedType('all');
     setSelectedAsset('all');
     setStartDate('');
@@ -145,7 +154,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const hasActiveFilters =
     searchQuery ||
     selectedCategory !== 'all' ||
-    selectedMember !== 'all' ||
+    currentMemberFilter !== 'all' ||
     selectedType !== 'all' ||
     selectedAsset !== 'all' ||
     startDate ||
@@ -373,8 +382,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 Anggota Keluarga
               </label>
               <select
-                value={selectedMember}
-                onChange={(e) => setSelectedMember(e.target.value)}
+                value={currentMemberFilter}
+                onChange={(e) => setMemberFilter(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               >
                 <option value="all">Semua Anggota</option>
@@ -434,9 +443,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           Filter Anggota:
         </span>
         <button
-          onClick={() => setSelectedMember('all')}
+          onClick={() => setMemberFilter('all')}
           className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-            selectedMember === 'all'
+            currentMemberFilter === 'all'
               ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
               : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
           }`}
@@ -444,12 +453,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           Semua Anggota
         </button>
         {(currentGroup.members || []).map((m) => {
-          const isSelected = selectedMember === m.id;
+          const isSelected = currentMemberFilter === m.id;
           const mTheme = getMemberColorTheme(m.avatarColor);
           return (
             <button
               key={m.id}
-              onClick={() => setSelectedMember(isSelected ? 'all' : m.id)}
+              onClick={() => setMemberFilter(isSelected ? 'all' : m.id)}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap border transition-all cursor-pointer ${
                 isSelected
                   ? `${mTheme.badge} shadow-xs border-transparent`

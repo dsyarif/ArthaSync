@@ -21,6 +21,7 @@ import {
   Users,
   Scale,
   Sparkles,
+  ChevronDown,
 } from 'lucide-react';
 import { AssetAccount, AssetType, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
 import {
@@ -56,6 +57,7 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AssetAccount | null>(null);
+  const [showAccountsList, setShowAccountsList] = useState(false);
   const [localMemberFilter, setLocalMemberFilter] = useState('all');
   const [assetViewMode, setAssetViewMode] = useState<'liquid' | 'real_net'>(() => {
     if (typeof window !== 'undefined') {
@@ -240,7 +242,7 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
   };
 
   return (
-    <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-white p-5 sm:p-6 shadow-xl border border-slate-800/80 relative overflow-hidden space-y-5">
+    <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-white p-4 sm:p-6 shadow-xl border border-slate-800/80 relative overflow-hidden space-y-4 sm:space-y-5">
       {/* Decorative ambient lighting */}
       <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -250,11 +252,18 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
             <ShieldCheck className="w-4 h-4" />
-            <span>Overview Aset & Rekap Keuangan ({currentGroup.name})</span>
+            <span>Aset & Kas ({currentGroup.name})</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-1">
-            Total Estimasi Kekayaan & Kas
-          </h2>
+          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+            <h2 className="text-lg sm:text-2xl font-black tracking-tight text-white">
+              Estimasi Kekayaan & Kas
+            </h2>
+            {activeMemberFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                {activeMemberFilter === 'joint' ? 'Rek. Bersama' : `Khusus: ${memMap.get(activeMemberFilter)?.name || 'Anggota'}`}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
@@ -265,7 +274,7 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
               title="Transfer antar rekening / kas"
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>Transfer Saldo</span>
+              <span>Transfer</span>
             </button>
           )}
           <button
@@ -273,64 +282,15 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Tambah Rekening</span>
+            <span>+ Rekening</span>
           </button>
-        </div>
-      </div>
-
-      {/* Feature 1: Member Filter Switcher for Dashboard Saldo */}
-      <div className="relative z-10 pt-1 pb-1">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-          <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1 flex-shrink-0">
-            <Users className="w-3 h-3 text-emerald-400" /> Filter Saldo:
-          </span>
-          <button
-            onClick={() => handleMemberFilterChange('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeMemberFilter === 'all'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                : 'bg-white/10 text-slate-300 hover:bg-white/20'
-            }`}
-          >
-            Saldo Bersama (Seluruh Rekening)
-          </button>
-          <button
-            onClick={() => handleMemberFilterChange('joint')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeMemberFilter === 'joint'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                : 'bg-white/10 text-slate-300 hover:bg-white/20'
-            }`}
-          >
-            Hanya Rekening Bersama
-          </button>
-          {members.map((m) => {
-            const isSelected = activeMemberFilter === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => handleMemberFilterChange(m.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-white text-slate-950 border-white shadow-sm font-black'
-                    : 'bg-white/10 text-slate-300 border-white/10 hover:bg-white/20'
-                }`}
-              >
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: m.avatarColor }}
-                />
-                <span>Hanya Saldo {m.name}</span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
       {/* Main Asset Figures */}
-      <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {/* Total Assets Big Display */}
-        <div className="md:col-span-2 p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 flex flex-col justify-between">
+        <div className="md:col-span-2 p-4 sm:p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 flex flex-col justify-between">
           <div>
             {/* Top row: Label + View Mode Toggle + Eye hide button */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-white/10 mb-3">
@@ -410,56 +370,50 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
               <div className="text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight text-white mt-1.5">
                 {isBalanceHidden ? 'Rp ****' : formatRupiah(displayedMainFigure)}
               </div>
+            </div>
+          </div>
 
-              {/* Dynamic Formula Pill for True Net Asset */}
-              {isRealNetMode && !isBalanceHidden && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 text-slate-300">
-                  <span className="text-slate-400">Kalkulasi:</span>
-                  <span>Saldo <strong className="font-mono text-white">{formatRupiah(realNetWorth.liquidBalance, { compact: true })}</strong></span>
-                  <span className="text-emerald-400 font-bold">+</span>
-                  <span>Piutang <strong className="font-mono text-emerald-400">+{formatRupiah(realNetWorth.receivableRemaining, { compact: true })}</strong></span>
-                  <span className="text-red-400 font-bold">-</span>
-                  <span>Utang <strong className="font-mono text-red-400">-{formatRupiah(realNetWorth.payableRemaining, { compact: true })}</strong></span>
-                  <span className="text-slate-400 font-bold">=</span>
-                  <span className="font-mono font-bold text-amber-300">{formatRupiah(realNetWorth.realNetAsset, { compact: true })}</span>
+          {/* Real Net Worth 4-Card Breakdown (Tampilan kalkulasi terpadu 1 saja) */}
+          {isRealNetMode && (
+            <div className="mt-3.5 pt-3 border-t border-white/10 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-300">Kalkulasi Aset Riil (Net Worth)</span>
+                <span className="font-mono text-[10px] text-amber-300">Saldo + Piutang - Utang</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded-xl bg-white/5 border border-white/10">
+                  <span className="text-[10px] text-slate-400 block">1. Saldo Rekening</span>
+                  <span className="font-mono font-bold text-white block mt-0.5">
+                    {isBalanceHidden ? '****' : formatRupiah(realNetWorth.liquidBalance, { compact: true })}
+                  </span>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Real Net Worth 4-Card Breakdown */}
-          <div className="mt-4 pt-3.5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div className="p-2 rounded-xl bg-white/5 border border-white/10">
-              <span className="text-[10px] text-slate-400 block">1. Saldo Rekening</span>
-              <span className="font-mono font-bold text-white block mt-0.5">
-                {isBalanceHidden ? '****' : formatRupiah(realNetWorth.liquidBalance, { compact: true })}
-              </span>
-            </div>
-            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <div className="flex items-center justify-between text-[10px] text-emerald-300">
-                <span>2. (+) Piutang</span>
-                <span className="opacity-75">{realNetWorth.receivablesCount}</span>
+                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="flex items-center justify-between text-[10px] text-emerald-300">
+                    <span>2. (+) Piutang</span>
+                    <span className="opacity-75">{realNetWorth.receivablesCount}</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 block mt-0.5">
+                    {isBalanceHidden ? '****' : `+${formatRupiah(realNetWorth.receivableRemaining, { compact: true })}`}
+                  </span>
+                </div>
+                <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <div className="flex items-center justify-between text-[10px] text-red-300">
+                    <span>3. (-) Utang</span>
+                    <span className="opacity-75">{realNetWorth.payablesCount}</span>
+                  </div>
+                  <span className="font-mono font-bold text-red-400 block mt-0.5">
+                    {isBalanceHidden ? '****' : `-${formatRupiah(realNetWorth.payableRemaining, { compact: true })}`}
+                  </span>
+                </div>
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <span className="text-[10px] text-amber-300 font-semibold block">4. (=) Aset Riil</span>
+                  <span className="font-mono font-bold text-amber-300 block mt-0.5">
+                    {isBalanceHidden ? '****' : formatRupiah(realNetWorth.realNetAsset, { compact: true })}
+                  </span>
+                </div>
               </div>
-              <span className="font-mono font-bold text-emerald-400 block mt-0.5">
-                {isBalanceHidden ? '****' : `+${formatRupiah(realNetWorth.receivableRemaining, { compact: true })}`}
-              </span>
             </div>
-            <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center justify-between text-[10px] text-red-300">
-                <span>3. (-) Utang</span>
-                <span className="opacity-75">{realNetWorth.payablesCount}</span>
-              </div>
-              <span className="font-mono font-bold text-red-400 block mt-0.5">
-                {isBalanceHidden ? '****' : `-${formatRupiah(realNetWorth.payableRemaining, { compact: true })}`}
-              </span>
-            </div>
-            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
-              <span className="text-[10px] text-amber-300 font-semibold block">4. (=) Aset Riil</span>
-              <span className="font-mono font-bold text-amber-300 block mt-0.5">
-                {isBalanceHidden ? '****' : formatRupiah(realNetWorth.realNetAsset, { compact: true })}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Monthly Cashflow / Rekap Keuangan Card */}
@@ -509,61 +463,79 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
         </div>
       </div>
 
-      {/* Account Cards Carousel / Grid */}
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-            Daftar Kantong Kas & Rekening ({overview.accounts.length})
-          </span>
-          <span className="text-[11px] text-slate-400">Klik kartu untuk sesuaikan saldo</span>
+      {/* Account Cards Collapsible Section */}
+      <div className="relative z-10 pt-2 border-t border-white/10">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setShowAccountsList(!showAccountsList)}
+            className="flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition-colors cursor-pointer py-1"
+          >
+            <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Rincian Rekening & Kas ({overview.accounts.length})</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                showAccountsList ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAccountsList(!showAccountsList)}
+            className="text-[11px] text-emerald-400 hover:underline cursor-pointer font-medium"
+          >
+            {showAccountsList ? 'Tutup' : 'Lihat Rincian'}
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          {overview.accounts.map((account) => {
-            const owner = account.memberId ? memMap.get(account.memberId) : undefined;
-            return (
-              <div
-                key={account.id}
-                onClick={() => handleOpenEdit(account)}
-                className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer flex flex-col justify-between group"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-1 mb-2">
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
-                      style={{ backgroundColor: account.color }}
-                    >
-                      {getAssetIcon(account.type)}
+        {showAccountsList && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-3 animate-in fade-in">
+            {overview.accounts.map((account) => {
+              const owner = account.memberId ? memMap.get(account.memberId) : undefined;
+              return (
+                <div
+                  key={account.id}
+                  onClick={() => handleOpenEdit(account)}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
+                        style={{ backgroundColor: account.color }}
+                      >
+                        {getAssetIcon(account.type)}
+                      </div>
+                      {/* Owner Badge */}
+                      <span
+                        className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+                          owner
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}
+                      >
+                        {owner ? owner.name : 'Bersama'}
+                      </span>
                     </div>
-                    {/* Owner Badge */}
-                    <span
-                      className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                        owner
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      }`}
-                    >
-                      {owner ? owner.name : 'Bersama'}
-                    </span>
+                    <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
+                      {account.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {account.institution} {account.accountNumber ? `· ${account.accountNumber}` : ''}
+                    </p>
                   </div>
-                  <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
-                    {account.name}
-                  </h4>
-                  <p className="text-[10px] text-slate-400 truncate">
-                    {account.institution} {account.accountNumber ? `· ${account.accountNumber}` : ''}
-                  </p>
-                </div>
 
-                <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-[11px] font-mono font-bold text-white">
-                    {isBalanceHidden ? '****' : formatRupiah(account.balance, { compact: true })}
-                  </span>
-                  <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-[11px] font-mono font-bold text-white">
+                      {isBalanceHidden ? '****' : formatRupiah(account.balance, { compact: true })}
+                    </span>
+                    <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Asset Account Add / Edit Modal */}

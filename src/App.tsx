@@ -51,6 +51,9 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth() + 1);
 
+  // Global Member Filter State (Controlled from Navbar dropdown, applied globally)
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>('all');
+
   // Services States
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>(
     NotificationService.getSettings()
@@ -319,6 +322,8 @@ export default function App() {
           setSelectedYear(y);
           setSelectedMonth(m);
         }}
+        selectedMemberFilter={selectedMemberFilter}
+        onSelectMemberFilter={setSelectedMemberFilter}
       />
 
       {/* Main Content View Container */}
@@ -337,6 +342,8 @@ export default function App() {
             onUpdateGroup={handleUpdateGroup}
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
+            selectedMemberFilter={selectedMemberFilter}
+            onSelectMemberFilter={setSelectedMemberFilter}
             onDuplicateTransaction={handleDuplicateTransaction}
             onQuickSaveTransaction={handleQuickSaveTransaction}
             onInlineUpdateTransaction={handleInlineUpdateTransaction}
@@ -356,6 +363,8 @@ export default function App() {
             onOpenPrintReport={() => setPrintModalOpen(true)}
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
+            selectedMemberFilter={selectedMemberFilter}
+            onSelectMemberFilter={setSelectedMemberFilter}
             onDuplicateTransaction={handleDuplicateTransaction}
             onQuickSaveTransaction={handleQuickSaveTransaction}
             onInlineUpdateTransaction={handleInlineUpdateTransaction}

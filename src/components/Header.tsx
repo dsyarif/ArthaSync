@@ -36,6 +36,8 @@ interface HeaderProps {
   selectedYear?: number;
   selectedMonth?: number;
   onChangeMonth?: (year: number, month: number) => void;
+  selectedMemberFilter?: string;
+  onSelectMemberFilter?: (memberId: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,9 +56,20 @@ export const Header: React.FC<HeaderProps> = ({
   selectedYear,
   selectedMonth,
   onChangeMonth,
+  selectedMemberFilter = 'all',
+  onSelectMemberFilter,
 }) => {
   const [showGroupMenu, setShowGroupMenu] = useState(false);
   const [showSyncMenu, setShowSyncMenu] = useState(false);
+  const [showMemberFilterMenu, setShowMemberFilterMenu] = useState(false);
+
+  const activeMember = currentGroup.members?.find((m) => m.id === selectedMemberFilter);
+  const activeFilterLabel =
+    selectedMemberFilter === 'joint'
+      ? 'Rek. Bersama'
+      : activeMember
+      ? `Saldo: ${activeMember.name}`
+      : 'Semua Saldo';
 
   const handleManualSync = async () => {
     await StorageService.triggerCloudSync();
@@ -104,17 +117,17 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setShowGroupMenu(!showGroupMenu)}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
               aria-label="Pilih akun atau grup keluarga"
             >
-              <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="max-w-[120px] sm:max-w-[160px] truncate font-semibold">
+              <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="max-w-[90px] sm:max-w-[160px] truncate font-bold text-slate-800 dark:text-slate-100">
                 {currentGroup.name}
               </span>
-              <span className="text-slate-400 text-[11px]">
+              <span className="text-slate-400 text-[11px] hidden sm:inline">
                 ({currentGroup.members?.length || 1})
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             </button>
 
             {showGroupMenu && (
@@ -330,16 +343,156 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Global Month & Year Filter Bar across all views */}
+      {/* Global Month/Year & Saldo Member Filter Bar across all views */}
       {selectedYear && selectedMonth && onChangeMonth && (
-        <div className="border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/70 px-4 sm:px-6 lg:px-8 py-2">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-            <MonthYearFilterBar
-              selectedYear={selectedYear}
-              selectedMonth={selectedMonth}
-              onChangeMonth={onChangeMonth}
-              className="w-full sm:w-auto"
-            />
+        <div className="border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/70 px-3 sm:px-6 lg:px-8 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5">
+              <MonthYearFilterBar
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+                onChangeMonth={onChangeMonth}
+                className="shrink-0"
+              />
+
+              {/* Global Filter Saldo Dropdown */}
+              {onSelectMemberFilter && (
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => setShowMemberFilterMenu(!showMemberFilterMenu)}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-2xl transition-all border shadow-2xs cursor-pointer ${
+                      selectedMemberFilter && selectedMemberFilter !== 'all'
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/20'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                    title="Filter Saldo / Anggota Global"
+                    aria-label="Filter Saldo / Anggota Global"
+                  >
+                    {selectedMemberFilter === 'joint' ? (
+                      <Wallet className="w-3.5 h-3.5" />
+                    ) : activeMember ? (
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/50"
+                        style={{ backgroundColor: activeMember.avatarColor }}
+                      />
+                    ) : (
+                      <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    )}
+                    <span className="truncate max-w-[105px] sm:max-w-[150px]">
+                      {activeFilterLabel}
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        showMemberFilterMenu ? 'rotate-180' : ''
+                      } ${selectedMemberFilter && selectedMemberFilter !== 'all' ? 'text-slate-950' : 'text-slate-400'}`}
+                    />
+                  </button>
+
+                  {showMemberFilterMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMemberFilterMenu(false)}
+                      />
+                      <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95">
+                        <div className="px-3.5 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          Filter Saldo & Anggota
+                        </div>
+
+                        {/* Option: Semua Saldo */}
+                        <button
+                          onClick={() => {
+                            onSelectMemberFilter('all');
+                            setShowMemberFilterMenu(false);
+                          }}
+                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                            !selectedMemberFilter || selectedMemberFilter === 'all'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <div className="flex flex-col">
+                              <span>Semua Saldo (Gabungan)</span>
+                              <span className="text-[10px] text-slate-400">Seluruh rekening keluarga</span>
+                            </div>
+                          </div>
+                          {(!selectedMemberFilter || selectedMemberFilter === 'all') && (
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {/* Option: Rekening Bersama */}
+                        <button
+                          onClick={() => {
+                            onSelectMemberFilter('joint');
+                            setShowMemberFilterMenu(false);
+                          }}
+                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                            selectedMemberFilter === 'joint'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Wallet className="w-4 h-4 text-blue-500 shrink-0" />
+                            <div className="flex flex-col">
+                              <span>Hanya Rekening Bersama</span>
+                              <span className="text-[10px] text-slate-400">Khusus saldo patungan/bersama</span>
+                            </div>
+                          </div>
+                          {selectedMemberFilter === 'joint' && (
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          )}
+                        </button>
+
+                        <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                        <div className="px-3.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                          Saldo Perorangan
+                        </div>
+
+                        {/* Individual Members */}
+                        {(currentGroup.members || []).map((m) => {
+                          const isSelected = selectedMemberFilter === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                onSelectMemberFilter(m.id);
+                                setShowMemberFilterMenu(false);
+                              }}
+                              className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                                isSelected
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-3 h-3 rounded-full shrink-0"
+                                  style={{ backgroundColor: m.avatarColor }}
+                                />
+                                <div className="flex flex-col">
+                                  <span>Hanya Saldo {m.name}</span>
+                                  <span className="text-[10px] text-slate-400 capitalize">
+                                    {m.role.replace('_', ' ')}
+                                  </span>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Desktop Navigation Links */}
             <div className="hidden lg:flex items-center gap-1.5">
               {navItems.map((item) => (
