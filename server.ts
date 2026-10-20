@@ -13,7 +13,7 @@ const isProd = process.env.NODE_ENV === 'production';
 app.use(express.json({ limit: '10mb' }));
 
 // File-based persistence directory
-const DATA_DIR = path.join(__dirname, '.data');
+const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'cloud_store.json');
 
 // Ensure data dir exists
@@ -200,6 +200,46 @@ const initialData = {
       updatedAt: Date.now() - 80000,
     },
   ],
+  debts: [
+    {
+      id: 'debt-1',
+      groupId: 'grp-family-1',
+      type: 'utang',
+      partyType: 'internal',
+      memberId: 'mem-1',
+      otherMemberId: 'mem-2',
+      amount: 2500000,
+      paidAmount: 500000,
+      date: '2026-10-01',
+      dueDate: '2026-11-15',
+      description: 'Pinjaman modal usaha kecil ke Siti Rahma',
+      assetId: 'ast-1',
+      status: 'partial',
+      payments: [
+        { id: 'pay-1', amount: 500000, date: '2026-10-10', note: 'Cicilan 1 transfer BCA', createdAt: Date.now() - 86400000 * 5 },
+      ],
+      createdAt: Date.now() - 86400000 * 15,
+      updatedAt: Date.now() - 86400000 * 5,
+    },
+    {
+      id: 'debt-2',
+      groupId: 'grp-family-1',
+      type: 'piutang',
+      partyType: 'external',
+      memberId: 'mem-1',
+      otherPersonName: 'Mas Budi (Teman Kantor)',
+      amount: 1200000,
+      paidAmount: 0,
+      date: '2026-10-08',
+      dueDate: '2026-10-30',
+      description: 'Talangan tiket pesawat & hotel reuni kantor',
+      assetId: 'ast-1',
+      status: 'unpaid',
+      payments: [],
+      createdAt: Date.now() - 86400000 * 10,
+      updatedAt: Date.now() - 86400000 * 10,
+    },
+  ],
   lastSyncedAt: Date.now(),
 };
 
@@ -304,6 +344,7 @@ app.post('/api/sync', (req, res) => {
       transactions = [],
       categories = [],
       groups = [],
+      debts = [],
       deletedTxIds = [],
       deletedCatIds = [],
       deletedGrpIds = [],
@@ -375,6 +416,27 @@ app.post('/api/sync', (req, res) => {
       }
     }
     cloudStore.groups = Array.from(grpMap.values());
+
+    // Merge debts
+    if (Array.isArray(debts) && debts.length > 0) {
+      if (!cloudStore.debts) cloudStore.debts = [];
+      const debtMap = new Map<string, any>(cloudStore.debts.map((d: any) => [d.id, d]));
+      for (const clientDebt of debts) {
+        if (clientDebt.isDeleted) {
+          if (debtMap.has(clientDebt.id)) {
+            debtMap.delete(clientDebt.id);
+            hasChanges = true;
+          }
+          continue;
+        }
+        const existing = debtMap.get(clientDebt.id);
+        if (!existing || (clientDebt.updatedAt && clientDebt.updatedAt > (existing.updatedAt || 0))) {
+          debtMap.set(clientDebt.id, clientDebt);
+          hasChanges = true;
+        }
+      }
+      cloudStore.debts = Array.from(debtMap.values());
+    }
 
     if (hasChanges) {
       cloudStore.lastSyncedAt = Date.now();

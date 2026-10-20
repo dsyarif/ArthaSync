@@ -1203,6 +1203,7 @@ export class StorageService {
       const localTransactions = this.getTransactions();
       const localCategories = this.getCategories();
       const localGroups = this.getGroups();
+      const localDebts = this.getDebts();
 
       const response = await fetch('/api/sync', {
         method: 'POST',
@@ -1211,6 +1212,7 @@ export class StorageService {
           transactions: localTransactions,
           categories: localCategories,
           groups: localGroups,
+          debts: localDebts,
           deletedTxIds: this.getDeletedTxIds(),
           deletedCatIds: this.getDeletedCatIds(),
           deletedGrpIds: this.getDeletedGrpIds(),
@@ -1219,6 +1221,11 @@ export class StorageService {
 
       if (!response.ok) {
         throw new Error(`Cloud sync response error: ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Respon server bukan format JSON yang valid (lingkungan statis / backend belum aktif)');
       }
 
       const resData = await response.json();
@@ -1300,6 +1307,22 @@ export class StorageService {
         STORAGE_KEYS.GROUPS,
         JSON.stringify(Array.from(grpMap.values()).filter((g) => !deletedGrpSet.has(g.id)))
       );
+    }
+
+    // Merge debts
+    if (Array.isArray(remoteData.debts)) {
+      const debtMap = new Map<string, DebtRecord>(this.getDebts().map((d) => [d.id, d]));
+      for (const remoteDebt of remoteData.debts) {
+        if (remoteDebt.isDeleted) {
+          debtMap.delete(remoteDebt.id);
+          continue;
+        }
+        const local = debtMap.get(remoteDebt.id);
+        if (!local || remoteDebt.updatedAt >= local.updatedAt) {
+          debtMap.set(remoteDebt.id, remoteDebt);
+        }
+      }
+      localStorage.setItem(STORAGE_KEYS.DEBTS, JSON.stringify(Array.from(debtMap.values())));
     }
 
     this.notify();
