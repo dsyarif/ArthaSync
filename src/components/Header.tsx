@@ -15,6 +15,7 @@ import {
 import { CloudSyncState, FamilyGroup, ReminderSettings } from '../types/finance';
 import { StorageService } from '../services/storage';
 import { BiometricService } from '../services/biometric';
+import { isLocalhost } from '../services/supabase';
 import { MonthYearFilterBar } from './MonthYearFilterBar';
 
 interface HeaderProps {
@@ -90,8 +91,16 @@ export const Header: React.FC<HeaderProps> = ({
             {tabTitles[activeTab] || 'Dashboard'}
           </h1>
           <span className="text-xs text-slate-400 font-medium hidden xl:inline">
-            · {currentGroup.name}
+            · {currentGroup?.name || 'Belum Ada Grup'}
           </span>
+          {isLocalhost() && (
+            <span
+              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0"
+              title="Mode Local Sandbox: Perubahan localhost tidak mempengaruhi Supabase Production"
+            >
+              Sandbox (Supabase Aman)
+            </span>
+          )}
         </div>
 
         {/* Desktop Global Filters: Month/Year & Filter Saldo */}
@@ -255,6 +264,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white">
               ArthaSync
             </span>
+            {isLocalhost() && (
+              <span
+                className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                title="Sandbox: Supabase production aman"
+              >
+                Sandbox
+              </span>
+            )}
           </div>
 
           {/* Group Switcher Button */}
@@ -268,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span className="max-w-[85px] sm:max-w-[120px] truncate">
-                {currentGroup.name}
+                {currentGroup?.name || 'Pilih Grup'}
               </span>
               <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${showGroupMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -283,33 +300,37 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="px-3.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Pilih Akun / Grup
                   </div>
-                  {groups.map((group) => {
-                    const isSelected = group.id === currentGroup.id;
-                    return (
-                      <button
-                        key={group.id}
-                        onClick={() => {
-                          onSelectGroup(group.id);
-                          setShowGroupMenu(false);
-                        }}
-                        className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                          isSelected
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <div className="flex flex-col truncate">
-                          <span className="truncate font-semibold">{group.name}</span>
-                          <span className="text-[10px] text-slate-400 capitalize">
-                            {group.type.replace('_', ' ')} · {group.members.length} anggota
-                          </span>
-                        </div>
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
+                  {groups && groups.length > 0 ? (
+                    groups.map((group) => {
+                      const isSelected = group.id === currentGroup.id;
+                      return (
+                        <button
+                          key={group.id}
+                          onClick={() => {
+                            onSelectGroup(group.id);
+                            setShowGroupMenu(false);
+                          }}
+                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex flex-col truncate">
+                            <span className="truncate font-semibold">{group.name}</span>
+                            <span className="text-[10px] text-slate-400 capitalize">
+                              {group.type?.replace('_', ' ') || 'Grup'} · {group.members?.length || 0} anggota
+                            </span>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3.5 py-2 text-xs text-slate-400">Belum ada grup terdaftar</div>
+                  )}
                   <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
                   <button
                     onClick={() => {

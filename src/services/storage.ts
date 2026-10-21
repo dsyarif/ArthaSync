@@ -1,5 +1,5 @@
-import { AssetAccount, Category, CloudSyncState, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
-import { isSupabaseConfigured, SupabaseSyncService } from './supabase';
+import { AssetAccount, Category, CloudSyncState, DebtPayment, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
+import { isSupabaseActiveForEnvironment, isSupabaseConfigured, SupabaseSyncService } from './supabase';
 
 const STORAGE_KEYS = {
   TRANSACTIONS: 'arthasync_transactions_v1',
@@ -16,131 +16,18 @@ const STORAGE_KEYS = {
   DEBTS: 'arthasync_debts_v1',
 };
 
-// Default Asset Accounts with joint and individual ownership
-export const DEFAULT_FAMILY_ASSETS: AssetAccount[] = [
-  { id: 'ast-1', name: 'Rekening Operasional BCA', type: 'bank', institution: 'Bank BCA', balance: 32500000, color: '#2563eb', accountNumber: '***-8921', updatedAt: 1 }, // Saldo Bersama
-  { id: 'ast-2', name: 'Tabungan Deposito Mandiri', type: 'bank', institution: 'Bank Mandiri', balance: 50000000, color: '#4f46e5', accountNumber: '***-4310', memberId: 'mem-1', updatedAt: 1 }, // Milik Ayah
-  { id: 'ast-3', name: 'Kas Tunai di Rumah', type: 'kas', institution: 'Uang Tunai', balance: 4500000, color: '#059669', updatedAt: 1 }, // Saldo Bersama
-  { id: 'ast-4', name: 'E-Wallet (GoPay & OVO)', type: 'ewallet', institution: 'GoPay / OVO', balance: 2750000, color: '#0891b2', memberId: 'mem-2', updatedAt: 1 }, // Milik Ibu
-  { id: 'ast-5', name: 'Investasi Reksadana & Emas', type: 'investasi', institution: 'Bibit & Antam', balance: 65000000, color: '#d97706', memberId: 'mem-1', updatedAt: 1 }, // Milik Ayah
-];
+// Initial default asset accounts (clean and empty by default)
+export const DEFAULT_FAMILY_ASSETS: AssetAccount[] = [];
+export const DEFAULT_PERSONAL_ASSETS: AssetAccount[] = [];
 
-export const DEFAULT_PERSONAL_ASSETS: AssetAccount[] = [
-  { id: 'ast-p1', name: 'Rekening Utama BCA', type: 'bank', institution: 'Bank BCA', balance: 14500000, color: '#2563eb', accountNumber: '***-8921', memberId: 'mem-1', updatedAt: 1 },
-  { id: 'ast-p2', name: 'Dompet Kas Fisik', type: 'kas', institution: 'Tunai', balance: 1200000, color: '#059669', memberId: 'mem-1', updatedAt: 1 },
-  { id: 'ast-p3', name: 'Saldo GoPay / ShopeePay', type: 'ewallet', institution: 'E-Wallet', balance: 850000, color: '#0891b2', memberId: 'mem-1', updatedAt: 1 },
-  { id: 'ast-p4', name: 'Tabungan Emas Digital', type: 'investasi', institution: 'Pluang / Pegadaian', balance: 12000000, color: '#d97706', memberId: 'mem-1', updatedAt: 1 },
-];
+// Initial default debts/loans (clean and empty by default)
+export const DEFAULT_DEBTS: DebtRecord[] = [];
 
-// Initial default debts/loans (Utang & Piutang)
-export const DEFAULT_DEBTS: DebtRecord[] = [
-  {
-    id: 'debt-1',
-    groupId: 'grp-family-1',
-    type: 'utang',
-    partyType: 'internal',
-    memberId: 'mem-1', // Dwi Syarif pinjam ke Siti Rahma
-    otherMemberId: 'mem-2',
-    amount: 2500000,
-    paidAmount: 500000,
-    date: '2026-10-01',
-    dueDate: '2026-11-15',
-    description: 'Pinjaman modal usaha kecil ke Siti Rahma',
-    assetId: 'ast-1',
-    status: 'partial',
-    payments: [
-      { id: 'pay-1', amount: 500000, date: '2026-10-10', note: 'Cicilan 1 transfer BCA', createdAt: Date.now() - 86400000 * 5 },
-    ],
-    createdAt: Date.now() - 86400000 * 15,
-    updatedAt: Date.now() - 86400000 * 5,
-  },
-  {
-    id: 'debt-2',
-    groupId: 'grp-family-1',
-    type: 'piutang',
-    partyType: 'external',
-    memberId: 'mem-1', // Dwi Syarif meminjamkan ke Mas Budi
-    otherPersonName: 'Mas Budi (Teman Kantor)',
-    amount: 1200000,
-    paidAmount: 0,
-    date: '2026-10-08',
-    dueDate: '2026-10-30',
-    description: 'Talangan tiket pesawat & hotel reuni kantor',
-    assetId: 'ast-1',
-    status: 'unpaid',
-    payments: [],
-    createdAt: Date.now() - 86400000 * 10,
-    updatedAt: Date.now() - 86400000 * 10,
-  },
-  {
-    id: 'debt-3',
-    groupId: 'grp-family-1',
-    type: 'utang',
-    partyType: 'external',
-    memberId: 'mem-2', // Siti Rahma
-    otherPersonName: 'Cicilan Toko Elektronik Berkah',
-    amount: 5000000,
-    paidAmount: 2500000,
-    date: '2026-09-15',
-    dueDate: '2026-11-20',
-    description: 'Cicilan mesin cuci 2 tabung',
-    status: 'partial',
-    payments: [
-      { id: 'pay-2', amount: 2500000, date: '2026-10-05', note: 'Pembayaran DP & cicilan 1', createdAt: Date.now() - 86400000 * 12 },
-    ],
-    createdAt: Date.now() - 86400000 * 30,
-    updatedAt: Date.now() - 86400000 * 12,
-  },
-];
+// Initial default categories (clean and empty by default)
+export const DEFAULT_CATEGORIES: Category[] = [];
 
-// Initial default categories
-export const DEFAULT_CATEGORIES: Category[] = [
-  // Kategori Pengeluaran
-  { id: 'cat-food', name: 'Makanan & Minuman', icon: 'Utensils', color: '#f97316', monthlyBudget: 3500000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-groceries', name: 'Belanja Supermarket', icon: 'ShoppingCart', color: '#10b981', monthlyBudget: 2500000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-transport', name: 'Transportasi & Bensin', icon: 'Car', color: '#3b82f6', monthlyBudget: 1200000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-bills', name: 'Tagihan & Utilitas', icon: 'Zap', color: '#eab308', monthlyBudget: 1500000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-education', name: 'Pendidikan & Les', icon: 'GraduationCap', color: '#8b5cf6', monthlyBudget: 1000000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-health', name: 'Kesehatan & Farmasi', icon: 'HeartPulse', color: '#ec4899', monthlyBudget: 800000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-entertainment', name: 'Hiburan & Liburan', icon: 'Film', color: '#06b6d4', monthlyBudget: 800000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-savings', name: 'Tabungan & Investasi', icon: 'PiggyBank', color: '#14b8a6', monthlyBudget: 2000000, type: 'expense', isDefault: true, updatedAt: 1 },
-  { id: 'cat-others', name: 'Lain-lain', icon: 'MoreHorizontal', color: '#64748b', monthlyBudget: 500000, type: 'expense', isDefault: true, updatedAt: 1 },
-  // Kategori Pemasukan
-  { id: 'cat-in-salary', name: 'Gaji Pokok & Upah', icon: 'Briefcase', color: '#10b981', monthlyBudget: 15000000, type: 'income', isDefault: true, updatedAt: 1 },
-  { id: 'cat-in-bonus', name: 'Bonus, THR & Hadiah', icon: 'Gift', color: '#f59e0b', monthlyBudget: 2500000, type: 'income', isDefault: true, updatedAt: 1 },
-  { id: 'cat-in-business', name: 'Bisnis & Freelance', icon: 'TrendingUp', color: '#3b82f6', monthlyBudget: 5000000, type: 'income', isDefault: true, updatedAt: 1 },
-  { id: 'cat-in-investment', name: 'Hasil Investasi & Dividen', icon: 'Coins', color: '#8b5cf6', monthlyBudget: 1500000, type: 'income', isDefault: true, updatedAt: 1 },
-  { id: 'cat-in-others', name: 'Pemasukan Lain-lain', icon: 'Banknote', color: '#06b6d4', monthlyBudget: 500000, type: 'income', isDefault: true, updatedAt: 1 },
-];
-
-export const DEFAULT_GROUPS: FamilyGroup[] = [
-  {
-    id: 'grp-family-1',
-    name: 'Keluarga Cemara',
-    type: 'keluarga',
-    currency: 'IDR',
-    monthlyBudget: 15000000,
-    assets: DEFAULT_FAMILY_ASSETS,
-    updatedAt: 1,
-    members: [
-      { id: 'mem-1', name: 'Dwi Syarif', role: 'kepala_keluarga', avatarColor: '#2563eb', email: 'DwiSyarif98@gmail.com' },
-      { id: 'mem-2', name: 'Siti Rahma', role: 'pasangan', avatarColor: '#e11d48' },
-      { id: 'mem-3', name: 'Rizky', role: 'anak', avatarColor: '#059669' },
-    ],
-  },
-  {
-    id: 'grp-personal',
-    name: 'Pribadi (Dompet Mandiri)',
-    type: 'pribadi',
-    currency: 'IDR',
-    monthlyBudget: 5000000,
-    assets: DEFAULT_PERSONAL_ASSETS,
-    updatedAt: 1,
-    members: [
-      { id: 'mem-1', name: 'Dwi Syarif', role: 'kepala_keluarga', avatarColor: '#2563eb', email: 'DwiSyarif98@gmail.com' },
-    ],
-  },
-];
+// Initial default groups (clean and empty by default)
+export const DEFAULT_GROUPS: FamilyGroup[] = [];
 
 export class StorageService {
   private static listeners: Set<() => void> = new Set();
@@ -247,7 +134,7 @@ export class StorageService {
   private static initRealtime() {
     if (!this.syncState.isOnline) return;
 
-    if (isSupabaseConfigured()) {
+    if (isSupabaseActiveForEnvironment()) {
       if (this.unsubscribeSupabaseRealtime) {
         this.unsubscribeSupabaseRealtime();
         this.unsubscribeSupabaseRealtime = null;
@@ -596,13 +483,11 @@ export class StorageService {
   public static getDebts(): DebtRecord[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DEBTS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.DEBTS, JSON.stringify(DEFAULT_DEBTS));
-        return DEFAULT_DEBTS;
-      }
-      return JSON.parse(data);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return DEFAULT_DEBTS;
+      return [];
     }
   }
 
@@ -1065,33 +950,15 @@ export class StorageService {
   public static getCategories(): Category[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      let list: Category[] = data ? JSON.parse(data) : DEFAULT_CATEGORIES;
-      if (!list || list.length === 0) list = DEFAULT_CATEGORIES;
-
-      let needsSave = false;
-      const updatedList = list.map((c) => {
-        if (!c.type) {
-          needsSave = true;
-          return { ...c, type: 'expense' as const };
-        }
-        return c;
-      });
-
-      // Ensure default income categories exist if the user has no income categories yet
-      const hasIncome = updatedList.some((c) => c.type === 'income');
-      if (!hasIncome) {
-        const defaultIncomeCategories = DEFAULT_CATEGORIES.filter((c) => c.type === 'income');
-        updatedList.push(...defaultIncomeCategories);
-        needsSave = true;
-      }
-
-      if (needsSave) {
-        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updatedList));
-      }
-
-      return updatedList;
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((c) => ({
+        ...c,
+        type: c.type || ('expense' as const),
+      }));
     } catch {
-      return DEFAULT_CATEGORIES;
+      return [];
     }
   }
 
@@ -1167,19 +1034,16 @@ export class StorageService {
   public static getGroups(): FamilyGroup[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.GROUPS);
-      const groups: FamilyGroup[] = data ? JSON.parse(data) : DEFAULT_GROUPS;
-      const list = groups.length > 0 ? groups : DEFAULT_GROUPS;
-      return list.map((g) => ({
+      if (!data) return [];
+      const groups = JSON.parse(data);
+      if (!Array.isArray(groups)) return [];
+      return groups.map((g) => ({
         ...g,
-        assets:
-          Array.isArray(g.assets) && g.assets.length > 0
-            ? g.assets
-            : g.type === 'pribadi'
-            ? DEFAULT_PERSONAL_ASSETS
-            : DEFAULT_FAMILY_ASSETS,
+        members: Array.isArray(g.members) ? g.members : [],
+        assets: Array.isArray(g.assets) ? g.assets : [],
       }));
     } catch {
-      return DEFAULT_GROUPS;
+      return [];
     }
   }
 
@@ -1194,7 +1058,7 @@ export class StorageService {
     if (saved && groups.some((g) => g.id === saved)) {
       return saved;
     }
-    return groups[0]?.id || 'grp-family-1';
+    return groups[0]?.id || '';
   }
 
   public static setCurrentGroupId(groupId: string) {
@@ -1293,6 +1157,7 @@ export class StorageService {
     localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
     localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
     localStorage.removeItem(STORAGE_KEYS.GROUPS);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_GROUP_ID);
     localStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
     localStorage.removeItem(STORAGE_KEYS.DELETED_CAT_IDS);
     localStorage.removeItem(STORAGE_KEYS.DELETED_GRP_IDS);
@@ -1305,11 +1170,11 @@ export class StorageService {
       } catch {}
     }
 
-    this.saveCategories(DEFAULT_CATEGORIES);
-    this.saveGroups(DEFAULT_GROUPS);
-    this.setCurrentGroupId(DEFAULT_GROUPS[0].id);
+    this.saveCategories([]);
+    this.saveGroups([]);
+    this.setCurrentGroupId('');
     this.saveTransactions([]);
-    this.saveDebts(DEFAULT_DEBTS);
+    this.saveDebts([]);
     this.notify();
     return true;
   }
@@ -1361,34 +1226,17 @@ export class StorageService {
     const deletedDebtIds = this.getDeletedDebtIds();
 
     try {
-      // 1. Primary: Direct Supabase Cloud Pull
+      // 1. Primary: Direct Supabase Cloud Pull (Production only; Localhost is strictly isolated)
       // CLOUD IS THE SINGLE SOURCE OF TRUTH. LOCAL NEVER OVERWRITES CLOUD!
-      if (isSupabaseConfigured()) {
+      if (isSupabaseActiveForEnvironment()) {
         try {
           const remote = await SupabaseSyncService.pullFromSupabase();
 
-          if (remote.isInitialized) {
-            // Cloud has data: refresh local cache with canonical data from Supabase
-            this.saveGroups(remote.groups);
-            this.saveCategories(remote.categories);
-            this.saveTransactions(remote.transactions);
-            this.saveDebts(remote.debts);
-          } else {
-            // First time ever: Supabase is brand new and empty (0 groups)
-            // Seed initial starting data to Supabase once
-            await SupabaseSyncService.seedIfEmpty(
-              DEFAULT_GROUPS,
-              DEFAULT_CATEGORIES,
-              DEFAULT_DEBTS
-            );
-            const fresh = await SupabaseSyncService.pullFromSupabase();
-            if (fresh.isInitialized) {
-              this.saveGroups(fresh.groups);
-              this.saveCategories(fresh.categories);
-              this.saveTransactions(fresh.transactions);
-              this.saveDebts(fresh.debts);
-            }
-          }
+          // Refresh local cache with canonical data from Supabase
+          this.saveGroups(remote.groups);
+          this.saveCategories(remote.categories);
+          this.saveTransactions(remote.transactions);
+          this.saveDebts(remote.debts);
 
           this.clearPendingQueue();
           this.syncState.lastSyncedAt = Date.now();

@@ -25,6 +25,31 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+/**
+ * Checks if the app is currently running in a localhost / local development environment.
+ */
+export function isLocalhost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '[::1]' ||
+    h.endsWith('.local')
+  );
+}
+
+/**
+ * Returns true if Supabase is configured AND not in a local development environment.
+ * Localhost is strictly isolated from modifying or affecting Supabase production!
+ */
+export function isSupabaseActiveForEnvironment(): boolean {
+  if (typeof window !== 'undefined' && isLocalhost()) {
+    return false;
+  }
+  return isSupabaseConfigured();
+}
+
 export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http'));
 }
@@ -208,6 +233,13 @@ export async function checkSupabaseHealth(): Promise<{
   error: string | null;
   tablesMissing?: boolean;
 }> {
+  if (isLocalhost()) {
+    return {
+      ok: true,
+      error: 'Localhost Environment (Terisolasi dari Supabase Production)',
+    };
+  }
+
   try {
     const { error } = await supabase.from('transactions').select('id').limit(1);
     if (error) {
@@ -226,18 +258,9 @@ export async function checkSupabaseHealth(): Promise<{
   }
 }
 
-// Helper to chunk arrays for batch operations
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size));
-  }
-  return result;
-}
-
 // ----------------------------------------------------
 // Cloud-First Supabase Operations
-// Local is a read cache of Supabase; Cloud is Single Source of Truth
+// Localhost is isolated. No automatic template seed mechanism.
 // ----------------------------------------------------
 
 export interface RemoteSyncResult {
@@ -253,9 +276,19 @@ export class SupabaseSyncService {
 
   /**
    * PULL ONLY: Fetches the deployed cloud data from Supabase.
-   * Local storage will be refreshed with this canonical data.
+   * Localhost will NOT query or modify Supabase production.
    */
   public static async pullFromSupabase(): Promise<RemoteSyncResult> {
+    if (isLocalhost()) {
+      return {
+        groups: [],
+        categories: [],
+        transactions: [],
+        debts: [],
+        isInitialized: false,
+      };
+    }
+
     assertOnline('mengambil data dari cloud');
 
     const [txRes, catRes, grpRes, debtRes] = await Promise.all([
@@ -286,9 +319,10 @@ export class SupabaseSyncService {
 
   /**
    * Saves a single transaction directly to Supabase.
-   * Requires active internet connection.
+   * Bypassed on localhost.
    */
   public static async saveTransaction(tx: Transaction): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('mencatat transaksi');
     const row = toSupabaseTx(tx);
     const { error } = await supabase.from('transactions').upsert(row, { onConflict: 'id' });
@@ -297,9 +331,10 @@ export class SupabaseSyncService {
 
   /**
    * Soft-deletes a transaction in Supabase.
-   * Requires active internet connection.
+   * Bypassed on localhost.
    */
   public static async deleteTransaction(id: string): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menghapus transaksi');
     const { error } = await supabase
       .from('transactions')
@@ -310,8 +345,10 @@ export class SupabaseSyncService {
 
   /**
    * Saves a group / updated asset balance directly to Supabase.
+   * Bypassed on localhost.
    */
   public static async saveGroup(group: FamilyGroup): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menyimpan rekening / grup');
     const row = toSupabaseGroup(group);
     const { error } = await supabase.from('groups').upsert(row, { onConflict: 'id' });
@@ -320,8 +357,10 @@ export class SupabaseSyncService {
 
   /**
    * Soft-deletes a group in Supabase.
+   * Bypassed on localhost.
    */
   public static async deleteGroup(id: string): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menghapus grup');
     const { error } = await supabase
       .from('groups')
@@ -332,8 +371,10 @@ export class SupabaseSyncService {
 
   /**
    * Saves a category directly to Supabase.
+   * Bypassed on localhost.
    */
   public static async saveCategory(cat: Category): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menyimpan kategori');
     const row = toSupabaseCategory(cat);
     const { error } = await supabase.from('categories').upsert(row, { onConflict: 'id' });
@@ -342,8 +383,10 @@ export class SupabaseSyncService {
 
   /**
    * Soft-deletes a category in Supabase.
+   * Bypassed on localhost.
    */
   public static async deleteCategory(id: string): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menghapus kategori');
     const { error } = await supabase
       .from('categories')
@@ -354,8 +397,10 @@ export class SupabaseSyncService {
 
   /**
    * Saves a debt record directly to Supabase.
+   * Bypassed on localhost.
    */
   public static async saveDebt(debt: DebtRecord): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menyimpan utang/piutang');
     const row = toSupabaseDebt(debt);
     const { error } = await supabase.from('debts').upsert(row, { onConflict: 'id' });
@@ -364,8 +409,10 @@ export class SupabaseSyncService {
 
   /**
    * Soft-deletes a debt record in Supabase.
+   * Bypassed on localhost.
    */
   public static async deleteDebt(id: string): Promise<void> {
+    if (isLocalhost()) return;
     assertOnline('menghapus utang/piutang');
     const { error } = await supabase
       .from('debts')
@@ -375,39 +422,13 @@ export class SupabaseSyncService {
   }
 
   /**
-   * Only seeds initial starting data if Supabase tables are completely empty (0 groups).
-   * Once populated, this will never be called again.
-   */
-  public static async seedIfEmpty(
-    initialGroups: FamilyGroup[],
-    initialCategories: Category[],
-    initialDebts: DebtRecord[]
-  ): Promise<boolean> {
-    assertOnline('inisialisasi data awal');
-    const { data, error } = await supabase.from('groups').select('id').limit(1);
-    if (error) return false;
-    if (data && data.length > 0) {
-      // Cloud database already has data, do NOT overwrite!
-      return false;
-    }
-
-    // Supabase is completely empty, insert initial template once
-    for (const chunk of chunkArray(initialGroups.map(toSupabaseGroup), 100)) {
-      await supabase.from('groups').upsert(chunk);
-    }
-    for (const chunk of chunkArray(initialCategories.map(toSupabaseCategory), 100)) {
-      await supabase.from('categories').upsert(chunk);
-    }
-    for (const chunk of chunkArray(initialDebts.map(toSupabaseDebt), 100)) {
-      await supabase.from('debts').upsert(chunk);
-    }
-    return true;
-  }
-
-  /**
-   * Realtime Listener: Automatically re-fetches when any device makes a change in Supabase.
+   * Realtime Listener: Automatically re-fetches when any deployed device makes a change in Supabase.
    */
   public static subscribeRealtime(onChange: () => void) {
+    if (isLocalhost()) {
+      return () => {};
+    }
+
     if (this.realtimeChannel) {
       this.realtimeChannel.unsubscribe();
       this.realtimeChannel = null;

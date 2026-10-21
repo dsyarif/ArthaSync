@@ -304,65 +304,76 @@ export const FamilyGroupView: React.FC<FamilyGroupViewProps> = ({
       </div>
 
       {/* Account Cards Switcher */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {groups.map((grp) => {
-          const isSelected = grp.id === currentGroup.id;
-          return (
-            <button
-              key={grp.id}
-              onClick={() => onSelectGroup(grp.id)}
-              className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between ${
-                isSelected
-                  ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-2 ring-emerald-500/20'
-                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    {grp.type === 'keluarga'
-                      ? 'Keluarga'
-                      : grp.type === 'kost_grup'
-                      ? 'Rekan / Kost'
-                      : 'Pribadi'}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {isSelected && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">
-                        Aktif
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenEditGroup(grp);
-                      }}
-                      className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-lg transition-colors cursor-pointer"
-                      title={`Edit Profil ${grp.name}`}
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
+      {groups.length === 0 ? (
+        <div className="p-6 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center">
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">
+            Belum ada grup / akun keuangan
+          </p>
+          <p className="text-xs text-slate-400">
+            Klik tombol "Buat Akun / Grup Baru" di atas untuk menambahkan grup pertama Anda.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {groups.map((grp) => {
+            const isSelected = grp.id === currentGroup.id;
+            return (
+              <button
+                key={grp.id}
+                onClick={() => onSelectGroup(grp.id)}
+                className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-2 ring-emerald-500/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      {grp.type === 'keluarga'
+                        ? 'Keluarga'
+                        : grp.type === 'kost_grup'
+                        ? 'Rekan / Kost'
+                        : 'Pribadi'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isSelected && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                          Aktif
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditGroup(grp);
+                        }}
+                        className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-lg transition-colors cursor-pointer"
+                        title={`Edit Profil ${grp.name}`}
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                    {grp.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {grp.members?.length || 0} Anggota Terdaftar
+                  </p>
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                  {grp.name}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {grp.members?.length || 1} Anggota Terdaftar
-                </p>
-              </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs flex justify-between items-center text-slate-500">
-                <span>Anggaran:</span>
-                <span className="font-mono font-bold text-slate-900 dark:text-white">
-                  {formatRupiah(grp.monthlyBudget, { compact: true })}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs flex justify-between items-center text-slate-500">
+                  <span>Anggaran:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    {formatRupiah(grp.monthlyBudget, { compact: true })}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Current Active Group Management Section */}
       <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">

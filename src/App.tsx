@@ -128,18 +128,17 @@ export default function App() {
     };
   }, []);
 
-  const currentGroup =
+  const currentGroup: FamilyGroup =
     groups.find((g) => g.id === currentGroupId) ||
     groups[0] || {
-      id: 'grp-default',
-      name: 'Keluarga Utama',
+      id: '',
+      name: 'Belum Ada Grup',
       type: 'keluarga' as const,
       currency: 'IDR',
-      monthlyBudget: 15000000,
+      monthlyBudget: 0,
       updatedAt: 1,
-      members: [
-        { id: 'mem-1', name: 'Ayah', role: 'kepala_keluarga' as const, avatarColor: '#3b82f6' },
-      ],
+      members: [],
+      assets: [],
     };
 
   // Transaction Actions
@@ -419,6 +418,29 @@ export default function App() {
                   className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-bold hover:bg-amber-600 cursor-pointer shrink-0"
                 >
                   Hubungkan
+                </button>
+              </div>
+            )}
+
+            {/* Empty State Onboarding if user has 0 groups */}
+            {groups.length === 0 && (
+              <div className="mb-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-500/20 text-center flex flex-col items-center">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 shadow-xs">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">
+                  Mulai dengan Membuat Grup Pertama
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-4 leading-relaxed">
+                  Data inisiasi awal telah dihapus secara menyeluruh. Silakan buat grup keluarga atau dompet pribadi Anda untuk mulai mencatat keuangan secara mandiri.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('family')}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 cursor-pointer flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Buat Grup / Dompet Baru</span>
                 </button>
               </div>
             )}

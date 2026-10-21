@@ -104,10 +104,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <div className="flex items-center gap-2 truncate">
               <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="truncate">{currentGroup.name}</span>
+              <span className="truncate">{currentGroup?.name || 'Belum Ada Grup'}</span>
             </div>
             <div className="flex items-center gap-1 text-slate-400 shrink-0">
-              <span className="text-[10px]">({currentGroup.members?.length || 1})</span>
+              <span className="text-[10px]">({currentGroup?.members?.length || 0})</span>
               <ChevronDown className="w-3.5 h-3.5" />
             </div>
           </button>
@@ -122,33 +122,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Pilih Akun / Grup
                 </div>
-                {groups.map((group) => {
-                  const isSelected = group.id === currentGroup.id;
-                  return (
-                    <button
-                      key={group.id}
-                      onClick={() => {
-                        onSelectGroup(group.id);
-                        setShowGroupMenu(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                        isSelected
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                      }`}
-                    >
-                      <div className="flex flex-col truncate">
-                        <span className="truncate">{group.name}</span>
-                        <span className="text-[10px] text-slate-400 capitalize">
-                          {group.type.replace('_', ' ')} · {group.members.length} anggota
-                        </span>
-                      </div>
-                      {isSelected && (
-                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
+                {groups && groups.length > 0 ? (
+                  groups.map((group) => {
+                    const isSelected = group.id === currentGroup.id;
+                    return (
+                      <button
+                        key={group.id}
+                        onClick={() => {
+                          onSelectGroup(group.id);
+                          setShowGroupMenu(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <div className="flex flex-col truncate">
+                          <span className="truncate font-semibold">{group.name}</span>
+                          <span className="text-[10px] text-slate-400 capitalize">
+                            {group.type?.replace('_', ' ') || 'Grup'} · {group.members?.length || 0} anggota
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-2 text-xs text-slate-400">Belum ada grup terdaftar</div>
+                )}
                 <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
                 <button
                   onClick={() => {
