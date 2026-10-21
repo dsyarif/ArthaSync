@@ -4,7 +4,6 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  Bell,
   Sun,
   Moon,
   Fingerprint,
@@ -12,12 +11,10 @@ import {
   Users,
   Check,
   Plus,
-  WifiOff,
 } from 'lucide-react';
 import { CloudSyncState, FamilyGroup, ReminderSettings } from '../types/finance';
 import { StorageService } from '../services/storage';
 import { BiometricService } from '../services/biometric';
-import { NotificationService } from '../services/notification';
 import { MonthYearFilterBar } from './MonthYearFilterBar';
 
 interface HeaderProps {
@@ -48,11 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDarkMode,
   onSelectGroup,
   onOpenNewGroupModal,
-  reminderSettings,
-  onOpenSettings,
   activeTab,
-  setActiveTab,
-  onQuickAdd,
   selectedYear,
   selectedMonth,
   onChangeMonth,
@@ -60,7 +53,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectMemberFilter,
 }) => {
   const [showGroupMenu, setShowGroupMenu] = useState(false);
-  const [showSyncMenu, setShowSyncMenu] = useState(false);
   const [showMemberFilterMenu, setShowMemberFilterMenu] = useState(false);
 
   const activeMember = currentGroup.members?.find((m) => m.id === selectedMemberFilter);
@@ -71,73 +63,224 @@ export const Header: React.FC<HeaderProps> = ({
       ? `Saldo: ${activeMember.name}`
       : 'Semua Saldo';
 
-  const handleManualSync = async () => {
-    await StorageService.triggerCloudSync();
+  const tabTitles: Record<string, string> = {
+    dashboard: 'Ringkasan Keuangan',
+    transactions: 'Daftar Transaksi',
+    statistics: 'Statistik & Grafik',
+    debts: 'Utang & Piutang',
+    categories: 'Kategori Pos Keuangan',
+    family: 'Grup & Anggota Keluarga',
+    settings: 'Pengaturan & Keamanan',
   };
 
   const handleLockScreen = () => {
     BiometricService.lockApp();
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Ringkasan' },
-    { id: 'transactions', label: 'Transaksi' },
-    { id: 'statistics', label: 'Statistik & Grafik' },
-    { id: 'debts', label: 'Utang Piutang' },
-    { id: 'categories', label: 'Kategori' },
-    { id: 'family', label: 'Grup Keluarga' },
-    { id: 'settings', label: 'Pengaturan' },
-  ];
+  const handleManualSync = async () => {
+    await StorageService.triggerCloudSync();
+  };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
-          {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center text-white shadow-sm shadow-emerald-500/20">
-              <Wallet className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-white">
-                  ArthaSync
+    <>
+      {/* 1. DESKTOP TOP BAR (Only visible on lg screens and up) */}
+      <header className="hidden lg:flex items-center justify-between h-16 px-6 lg:px-8 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-30 shrink-0 transition-colors">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <h1 className="text-base font-bold text-slate-900 dark:text-white truncate">
+            {tabTitles[activeTab] || 'Dashboard'}
+          </h1>
+          <span className="text-xs text-slate-400 font-medium hidden xl:inline">
+            · {currentGroup.name}
+          </span>
+        </div>
+
+        {/* Desktop Global Filters: Month/Year & Filter Saldo */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {selectedYear && selectedMonth && onChangeMonth && (
+            <MonthYearFilterBar
+              selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
+              onChangeMonth={onChangeMonth}
+              className="shrink-0"
+            />
+          )}
+
+          {/* Global Filter Saldo Dropdown (Desktop) */}
+          {onSelectMemberFilter && (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => {
+                  setShowMemberFilterMenu(!showMemberFilterMenu);
+                  setShowGroupMenu(false);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-2xl transition-all border shadow-2xs cursor-pointer ${
+                  selectedMemberFilter && selectedMemberFilter !== 'all'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title="Filter Saldo / Anggota Global"
+              >
+                {selectedMemberFilter === 'joint' ? (
+                  <Wallet className="w-3.5 h-3.5" />
+                ) : activeMember ? (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/50"
+                    style={{ backgroundColor: activeMember.avatarColor }}
+                  />
+                ) : (
+                  <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                )}
+                <span className="truncate max-w-[140px]">
+                  {activeFilterLabel}
                 </span>
-                <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                  Cloud
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-                Pencatat Pengeluaran & Sinkronisasi
-              </p>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    showMemberFilterMenu ? 'rotate-180' : ''
+                  } ${selectedMemberFilter && selectedMemberFilter !== 'all' ? 'text-slate-950' : 'text-slate-400'}`}
+                />
+              </button>
+
+              {showMemberFilterMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-xs"
+                    onClick={() => setShowMemberFilterMenu(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95">
+                    <div className="px-3.5 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Filter Saldo & Anggota
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        onSelectMemberFilter('all');
+                        setShowMemberFilterMenu(false);
+                      }}
+                      className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                        !selectedMemberFilter || selectedMemberFilter === 'all'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <div className="flex flex-col">
+                          <span>Semua Saldo (Gabungan)</span>
+                          <span className="text-[10px] text-slate-400">Seluruh rekening keluarga</span>
+                        </div>
+                      </div>
+                      {(!selectedMemberFilter || selectedMemberFilter === 'all') && (
+                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onSelectMemberFilter('joint');
+                        setShowMemberFilterMenu(false);
+                      }}
+                      className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                        selectedMemberFilter === 'joint'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-blue-500 shrink-0" />
+                        <div className="flex flex-col">
+                          <span>Hanya Rekening Bersama</span>
+                          <span className="text-[10px] text-slate-400">Khusus saldo patungan/bersama</span>
+                        </div>
+                      </div>
+                      {selectedMemberFilter === 'joint' && (
+                        <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      )}
+                    </button>
+
+                    <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                    <div className="px-3.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Saldo Perorangan
+                    </div>
+
+                    {(currentGroup.members || []).map((m) => {
+                      const isSelected = selectedMemberFilter === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            onSelectMemberFilter(m.id);
+                            setShowMemberFilterMenu(false);
+                          }}
+                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ backgroundColor: m.avatarColor }}
+                            />
+                            <div className="flex flex-col">
+                              <span>Hanya Saldo {m.name}</span>
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                {m.role.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
+          )}
+        </div>
+      </header>
+
+      {/* 2. MOBILE HEADER (< lg screens) */}
+      <header className="lg:hidden sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 w-full shrink-0 transition-colors">
+        {/* Mobile Top Row: Logo, Group Switcher, Sync & Theme Icons */}
+        <div className="flex items-center justify-between h-14 px-3 sm:px-4 gap-2">
+          {/* Brand */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center text-white shadow-xs">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white">
+              ArthaSync
+            </span>
           </div>
 
-          {/* Group / Family Switcher */}
-          <div className="relative">
+          {/* Group Switcher Button */}
+          <div className="relative shrink min-w-0">
             <button
-              onClick={() => setShowGroupMenu(!showGroupMenu)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
-              aria-label="Pilih akun atau grup keluarga"
+              onClick={() => {
+                setShowGroupMenu(!showGroupMenu);
+                setShowMemberFilterMenu(false);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
             >
               <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="max-w-[90px] sm:max-w-[160px] truncate font-bold text-slate-800 dark:text-slate-100">
+              <span className="max-w-[85px] sm:max-w-[120px] truncate">
                 {currentGroup.name}
               </span>
-              <span className="text-slate-400 text-[11px] hidden sm:inline">
-                ({currentGroup.members?.length || 1})
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${showGroupMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showGroupMenu && (
               <>
                 <div
-                  className="fixed inset-0 z-40"
+                  className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-xs"
                   onClick={() => setShowGroupMenu(false)}
                 />
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-3.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Pilih Akun / Grup
                   </div>
                   {groups.map((group) => {
@@ -149,379 +292,213 @@ export const Header: React.FC<HeaderProps> = ({
                           onSelectGroup(group.id);
                           setShowGroupMenu(false);
                         }}
-                        className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                        className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
                           isSelected
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                         }`}
                       >
-                        <div className="flex flex-col">
-                          <span>{group.name}</span>
+                        <div className="flex flex-col truncate">
+                          <span className="truncate font-semibold">{group.name}</span>
                           <span className="text-[10px] text-slate-400 capitalize">
-                            {group.type === 'keluarga'
-                              ? 'Keluarga'
-                              : group.type === 'kost_grup'
-                              ? 'Grup Rekan / Kost'
-                              : 'Akun Pribadi'}{' '}
-                            · {group.members.length} anggota
+                            {group.type.replace('_', ' ')} · {group.members.length} anggota
                           </span>
                         </div>
                         {isSelected && (
-                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         )}
                       </button>
                     );
                   })}
-                  <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+                  <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
                   <button
                     onClick={() => {
                       setShowGroupMenu(false);
                       onOpenNewGroupModal();
                     }}
-                    className="w-full px-3 py-2 text-left text-xs text-emerald-600 dark:text-emerald-400 font-medium hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center gap-2"
+                    className="w-full px-3.5 py-2 text-left text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Grup / Keluarga Baru</span>
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Grup Baru</span>
                   </button>
                 </div>
               </>
             )}
           </div>
 
-          {/* Top Actions: Sync Status, Reminder, Dark Mode, Quick Lock */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Cloud Sync Status Indicator */}
-            <div className="relative">
-              <button
-                onClick={() => setShowSyncMenu(!showSyncMenu)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  syncState.isSyncing
-                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900'
-                    : syncState.isOnline
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                }`}
-                title="Status Sinkronisasi Cloud"
-                aria-label="Status Sinkronisasi Cloud"
-              >
-                {syncState.isSyncing ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : syncState.isOnline ? (
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                  <CloudOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                )}
-                <span className="hidden md:inline">
-                  {syncState.isSyncing
-                    ? 'Sinkronisasi...'
-                    : syncState.isOnline
-                    ? 'Cloud Realtime'
-                    : 'Mode Offline'}
-                </span>
-                {syncState.pendingCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold">
-                    {syncState.pendingCount}
-                  </span>
-                )}
-              </button>
+          {/* Quick Icons: Sync, Dark Mode, Lock */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={handleManualSync}
+              disabled={syncState.isSyncing}
+              className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                syncState.isSyncing
+                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 border-blue-200'
+                  : syncState.isOnline
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 border-amber-200 dark:border-amber-800'
+              }`}
+              title="Sinkronisasi Cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncState.isSyncing ? 'animate-spin' : ''}`} />
+            </button>
 
-              {showSyncMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowSyncMenu(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-2">
-                      <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                        Status Sinkronisasi Cloud
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          syncState.isOnline
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+            <button
+              onClick={onToggleDarkMode}
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              title={darkMode ? 'Mode Terang' : 'Mode Gelap'}
+            >
+              {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5" />}
+            </button>
+
+            <button
+              onClick={handleLockScreen}
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              title="Kunci Aplikasi"
+            >
+              <Fingerprint className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Sub-Row: Compact Period & Filter Saldo (NO overflow-hidden, dropdowns float freely!) */}
+        {selectedYear && selectedMonth && onChangeMonth && (
+          <div className="px-2.5 sm:px-4 py-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/70 flex items-center justify-between gap-1.5 relative">
+            <MonthYearFilterBar
+              selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
+              onChangeMonth={onChangeMonth}
+              className="flex-1 min-w-0"
+            />
+
+            {/* Mobile Filter Saldo Dropdown */}
+            {onSelectMemberFilter && (
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => {
+                    setShowMemberFilterMenu(!showMemberFilterMenu);
+                    setShowGroupMenu(false);
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-xl transition-all border cursor-pointer ${
+                    selectedMemberFilter && selectedMemberFilter !== 'all'
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {selectedMemberFilter === 'joint' ? (
+                    <Wallet className="w-3 h-3" />
+                  ) : activeMember ? (
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0 border border-white/50"
+                      style={{ backgroundColor: activeMember.avatarColor }}
+                    />
+                  ) : (
+                    <Users className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  )}
+                  <span className="truncate max-w-[80px]">
+                    {activeFilterLabel}
+                  </span>
+                  <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showMemberFilterMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showMemberFilterMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-xs"
+                      onClick={() => setShowMemberFilterMenu(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95">
+                      <div className="px-3.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Filter Saldo & Anggota
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          onSelectMemberFilter('all');
+                          setShowMemberFilterMenu(false);
+                        }}
+                        className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                          !selectedMemberFilter || selectedMemberFilter === 'all'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                         }`}
                       >
-                        {syncState.isOnline ? 'Terhubung' : 'Offline'}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-                      <div className="flex justify-between">
-                        <span>Antrian Offline:</span>
-                        <span className="font-semibold text-slate-900 dark:text-white">
-                          {syncState.pendingCount} transaksi
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Terakhir Sinkron:</span>
-                        <span className="font-medium">
-                          {syncState.lastSyncedAt
-                            ? new Date(syncState.lastSyncedAt).toLocaleTimeString('id-ID', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                              })
-                            : 'Belum pernah'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
-                      <button
-                        onClick={handleManualSync}
-                        disabled={syncState.isSyncing || !syncState.isOnline}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <RefreshCw
-                          className={`w-3.5 h-3.5 ${syncState.isSyncing ? 'animate-spin' : ''}`}
-                        />
-                        <span>Sinkronkan Sekarang</span>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">Semua Saldo (Gabungan)</span>
+                            <span className="text-[10px] text-slate-400">Seluruh rekening keluarga</span>
+                          </div>
+                        </div>
+                        {(!selectedMemberFilter || selectedMemberFilter === 'all') && (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        )}
                       </button>
 
                       <button
                         onClick={() => {
-                          StorageService.toggleSimulatedOffline();
-                          setShowSyncMenu(false);
+                          onSelectMemberFilter('joint');
+                          setShowMemberFilterMenu(false);
                         }}
-                        className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium border transition-colors ${
-                          syncState.simulatedOffline
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                          selectedMemberFilter === 'joint'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                         }`}
                       >
-                        <WifiOff className="w-3.5 h-3.5" />
-                        <span>
-                          {syncState.simulatedOffline
-                            ? 'Matikan Simulasi Offline'
-                            : 'Uji Coba Mode Offline'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <Wallet className="w-4 h-4 text-blue-500 shrink-0" />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">Hanya Rekening Bersama</span>
+                            <span className="text-[10px] text-slate-400">Khusus saldo patungan/bersama</span>
+                          </div>
+                        </div>
+                        {selectedMemberFilter === 'joint' && (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        )}
                       </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
 
-            {/* Reminder Bell quick trigger */}
-            <button
-              onClick={() => {
-                NotificationService.playReminderChime();
-                onOpenSettings('reminder');
-              }}
-              title={`Pengingat Harian (${reminderSettings.enabled ? reminderSettings.time : 'Nonaktif'})`}
-              aria-label="Pengingat Harian"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors relative"
-            >
-              <Bell className="w-4 h-4" />
-              {reminderSettings.enabled && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full" />
-              )}
-            </button>
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={onToggleDarkMode}
-              title={darkMode ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
-              aria-label="Toggle Mode Gelap/Terang"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-            </button>
-
-            {/* Biometric Quick Lock */}
-            <button
-              onClick={handleLockScreen}
-              title="Kunci Aplikasi (Keamanan Sidik Jari / PIN)"
-              aria-label="Kunci Aplikasi Sekarang"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <Fingerprint className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Global Month/Year & Saldo Member Filter Bar across all views */}
-      {selectedYear && selectedMonth && onChangeMonth && (
-        <div className="border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/70 px-3 sm:px-6 lg:px-8 py-2">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5">
-              <MonthYearFilterBar
-                selectedYear={selectedYear}
-                selectedMonth={selectedMonth}
-                onChangeMonth={onChangeMonth}
-                className="shrink-0"
-              />
-
-              {/* Global Filter Saldo Dropdown */}
-              {onSelectMemberFilter && (
-                <div className="relative shrink-0">
-                  <button
-                    onClick={() => setShowMemberFilterMenu(!showMemberFilterMenu)}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-2xl transition-all border shadow-2xs cursor-pointer ${
-                      selectedMemberFilter && selectedMemberFilter !== 'all'
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/20'
-                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                    title="Filter Saldo / Anggota Global"
-                    aria-label="Filter Saldo / Anggota Global"
-                  >
-                    {selectedMemberFilter === 'joint' ? (
-                      <Wallet className="w-3.5 h-3.5" />
-                    ) : activeMember ? (
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/50"
-                        style={{ backgroundColor: activeMember.avatarColor }}
-                      />
-                    ) : (
-                      <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    )}
-                    <span className="truncate max-w-[105px] sm:max-w-[150px]">
-                      {activeFilterLabel}
-                    </span>
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                        showMemberFilterMenu ? 'rotate-180' : ''
-                      } ${selectedMemberFilter && selectedMemberFilter !== 'all' ? 'text-slate-950' : 'text-slate-400'}`}
-                    />
-                  </button>
-
-                  {showMemberFilterMenu && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowMemberFilterMenu(false)}
-                      />
-                      <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95">
-                        <div className="px-3.5 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                          Filter Saldo & Anggota
-                        </div>
-
-                        {/* Option: Semua Saldo */}
-                        <button
-                          onClick={() => {
-                            onSelectMemberFilter('all');
-                            setShowMemberFilterMenu(false);
-                          }}
-                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                            !selectedMemberFilter || selectedMemberFilter === 'all'
-                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                            <div className="flex flex-col">
-                              <span>Semua Saldo (Gabungan)</span>
-                              <span className="text-[10px] text-slate-400">Seluruh rekening keluarga</span>
-                            </div>
-                          </div>
-                          {(!selectedMemberFilter || selectedMemberFilter === 'all') && (
-                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          )}
-                        </button>
-
-                        {/* Option: Rekening Bersama */}
-                        <button
-                          onClick={() => {
-                            onSelectMemberFilter('joint');
-                            setShowMemberFilterMenu(false);
-                          }}
-                          className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                            selectedMemberFilter === 'joint'
-                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Wallet className="w-4 h-4 text-blue-500 shrink-0" />
-                            <div className="flex flex-col">
-                              <span>Hanya Rekening Bersama</span>
-                              <span className="text-[10px] text-slate-400">Khusus saldo patungan/bersama</span>
-                            </div>
-                          </div>
-                          {selectedMemberFilter === 'joint' && (
-                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          )}
-                        </button>
-
-                        <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
-                        <div className="px-3.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                          Saldo Perorangan
-                        </div>
-
-                        {/* Individual Members */}
-                        {(currentGroup.members || []).map((m) => {
-                          const isSelected = selectedMemberFilter === m.id;
-                          return (
-                            <button
-                              key={m.id}
-                              onClick={() => {
-                                onSelectMemberFilter(m.id);
-                                setShowMemberFilterMenu(false);
-                              }}
-                              className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                                isSelected
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
-                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className="w-3 h-3 rounded-full shrink-0"
-                                  style={{ backgroundColor: m.avatarColor }}
-                                />
-                                <div className="flex flex-col">
-                                  <span>Hanya Saldo {m.name}</span>
-                                  <span className="text-[10px] text-slate-400 capitalize">
-                                    {m.role.replace('_', ' ')}
-                                  </span>
-                                </div>
-                              </div>
-                              {isSelected && (
-                                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                              )}
-                            </button>
-                          );
-                        })}
+                      <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                      <div className="px-3.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Saldo Perorangan
                       </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Desktop Navigation Links */}
-            <div className="hidden lg:flex items-center gap-1.5">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                    activeTab === item.id
-                      ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-
-              {/* Desktop Quick Add Button */}
-              <button
-                onClick={onQuickAdd}
-                className="ml-2 flex items-center gap-1 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                title="Catat Transaksi Baru"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>+ Catat Transaksi</span>
-              </button>
-            </div>
+                      {(currentGroup.members || []).map((m) => {
+                        const isSelected = selectedMemberFilter === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              onSelectMemberFilter(m.id);
+                              setShowMemberFilterMenu(false);
+                            }}
+                            className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                              isSelected
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: m.avatarColor }}
+                              />
+                              <span className="truncate font-medium">Hanya Saldo {m.name}</span>
+                            </div>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
-    </header>
+        )}
+      </header>
+    </>
   );
 };

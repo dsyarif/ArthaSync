@@ -1286,7 +1286,7 @@ export class StorageService {
           continue;
         }
         const local = localMap.get(remoteTx.id);
-        if (!local || remoteTx.updatedAt >= local.updatedAt) {
+        if (!local || remoteTx.updatedAt > local.updatedAt) {
           localMap.set(remoteTx.id, { ...remoteTx, syncStatus: 'synced' });
         }
       }
@@ -1306,7 +1306,7 @@ export class StorageService {
           continue;
         }
         const local = catMap.get(remoteCat.id);
-        if (!local || remoteCat.updatedAt >= local.updatedAt) {
+        if (!local || remoteCat.updatedAt > local.updatedAt) {
           catMap.set(remoteCat.id, remoteCat);
         }
       }
@@ -1325,7 +1325,7 @@ export class StorageService {
           continue;
         }
         const local = grpMap.get(remoteGrp.id);
-        if (!local || remoteGrp.updatedAt >= local.updatedAt) {
+        if (!local || remoteGrp.updatedAt > local.updatedAt) {
           grpMap.set(remoteGrp.id, remoteGrp);
         }
       }
@@ -1344,7 +1344,7 @@ export class StorageService {
           continue;
         }
         const local = debtMap.get(remoteDebt.id);
-        if (!local || remoteDebt.updatedAt >= local.updatedAt) {
+        if (!local || remoteDebt.updatedAt > local.updatedAt) {
           debtMap.set(remoteDebt.id, remoteDebt);
         }
       }

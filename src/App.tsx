@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { TransactionsView } from './components/TransactionsView';
 import { StatisticsView } from './components/StatisticsView';
@@ -296,38 +297,57 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-150">
+    <div className="h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col lg:flex-row font-sans transition-colors duration-150">
       {/* Biometric Security Lock Screen Overlay */}
       {securitySettings.isLocked && (
         <BiometricLockScreen onUnlock={() => BiometricService.unlockApp()} />
       )}
 
-      {/* Main App Header with Month/Year Switcher & Navigation */}
-      <Header
+      {/* Desktop Left Sidebar Menu Bar (Fixed, never scrolls with content) */}
+      <Sidebar
         groups={groups}
         currentGroup={currentGroup}
-        syncState={syncState}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-        onSelectGroup={handleSelectGroup}
-        onOpenNewGroupModal={() => setActiveTab('family')}
-        reminderSettings={reminderSettings}
-        onOpenSettings={() => setActiveTab('settings')}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onQuickAdd={handleOpenQuickAdd}
-        selectedYear={selectedYear}
-        selectedMonth={selectedMonth}
-        onChangeMonth={(y, m) => {
-          setSelectedYear(y);
-          setSelectedMonth(m);
-        }}
-        selectedMemberFilter={selectedMemberFilter}
-        onSelectMemberFilter={setSelectedMemberFilter}
+        onSelectGroup={handleSelectGroup}
+        onOpenNewGroupModal={() => setActiveTab('family')}
+        syncState={syncState}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
+        reminderSettings={reminderSettings}
+        onOpenSettings={() => setActiveTab('settings')}
       />
 
-      {/* Main Content View Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Content Area Column */}
+      <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden relative">
+        {/* Header: Desktop Top Bar / Mobile Header (Sticky at top, never scrolls away) */}
+        <Header
+          groups={groups}
+          currentGroup={currentGroup}
+          syncState={syncState}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode(!darkMode)}
+          onSelectGroup={handleSelectGroup}
+          onOpenNewGroupModal={() => setActiveTab('family')}
+          reminderSettings={reminderSettings}
+          onOpenSettings={() => setActiveTab('settings')}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onQuickAdd={handleOpenQuickAdd}
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+          onChangeMonth={(y, m) => {
+            setSelectedYear(y);
+            setSelectedMonth(m);
+          }}
+          selectedMemberFilter={selectedMemberFilter}
+          onSelectMemberFilter={setSelectedMemberFilter}
+        />
+
+        {/* ONLY THIS MAIN CONTENT IS SCROLLABLE! */}
+        <main className="flex-1 overflow-y-auto overscroll-contain px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 lg:pb-8">
+          <div className="max-w-7xl w-full mx-auto">
         {activeTab === 'dashboard' && (
           <DashboardView
             transactions={transactions}
@@ -441,7 +461,8 @@ export default function App() {
             onResetAllData={handleResetAllData}
           />
         )}
-      </main>
+          </div>
+        </main>
 
       {/* Transaction Add / Edit / Duplicate Modal Dialog */}
       <TransactionModal
@@ -480,13 +501,14 @@ export default function App() {
         year={selectedYear}
         month={selectedMonth}
       />
-
-      {/* Modern Bottom Navigation Bar with Center Elevated Add Button */}
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onQuickAdd={handleOpenQuickAdd}
-      />
     </div>
+
+    {/* Modern Bottom Navigation Bar with Center Elevated Add Button */}
+    <BottomNav
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      onQuickAdd={handleOpenQuickAdd}
+    />
+  </div>
   );
 }

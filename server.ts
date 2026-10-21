@@ -30,7 +30,7 @@ const initialData = {
       type: 'keluarga',
       currency: 'IDR',
       monthlyBudget: 15000000,
-      updatedAt: Date.now() - 100000,
+      updatedAt: 1,
       assets: [
         { id: 'ast-1', name: 'Rekening Operasional BCA', type: 'bank', institution: 'Bank BCA', balance: 32500000, color: '#2563eb', accountNumber: '***-8921', updatedAt: 1 },
         { id: 'ast-2', name: 'Tabungan Deposito Mandiri', type: 'bank', institution: 'Bank Mandiri', balance: 50000000, color: '#4f46e5', accountNumber: '***-4310', updatedAt: 1 },
@@ -77,7 +77,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 600000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-1',
@@ -92,7 +92,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 500000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-2',
@@ -107,7 +107,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-2',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 400000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-3',
@@ -122,7 +122,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 300000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-4',
@@ -137,7 +137,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 250000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-5',
@@ -152,7 +152,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-2',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 200000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-6',
@@ -167,7 +167,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-3',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 150000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-7',
@@ -182,7 +182,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 100000,
+      updatedAt: 1,
     },
     {
       id: 'tx-init-8',
@@ -197,7 +197,7 @@ const initialData = {
       groupId: 'grp-family-1',
       memberId: 'mem-1',
       syncStatus: 'synced',
-      updatedAt: Date.now() - 80000,
+      updatedAt: 1,
     },
   ],
   debts: [
@@ -216,10 +216,10 @@ const initialData = {
       assetId: 'ast-1',
       status: 'partial',
       payments: [
-        { id: 'pay-1', amount: 500000, date: '2026-10-10', note: 'Cicilan 1 transfer BCA', createdAt: Date.now() - 86400000 * 5 },
+        { id: 'pay-1', amount: 500000, date: '2026-10-10', note: 'Cicilan 1 transfer BCA', createdAt: 1 },
       ],
-      createdAt: Date.now() - 86400000 * 15,
-      updatedAt: Date.now() - 86400000 * 5,
+      createdAt: 1,
+      updatedAt: 1,
     },
     {
       id: 'debt-2',
@@ -236,11 +236,11 @@ const initialData = {
       assetId: 'ast-1',
       status: 'unpaid',
       payments: [],
-      createdAt: Date.now() - 86400000 * 10,
-      updatedAt: Date.now() - 86400000 * 10,
+      createdAt: 1,
+      updatedAt: 1,
     },
   ],
-  lastSyncedAt: Date.now(),
+  lastSyncedAt: 1,
 };
 
 function loadStore() {
