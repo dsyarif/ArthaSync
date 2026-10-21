@@ -174,6 +174,16 @@ export class StorageService {
     return { ...this.syncState };
   }
 
+  public static assertOnline(actionName: string = 'menyimpan data') {
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      if (!navigator.onLine || this.syncState.simulatedOffline) {
+        throw new Error(
+          `Koneksi internet diperlukan untuk ${actionName}. Anda sedang dalam Mode Offline (Hanya Lihat). Hubungkan perangkat ke internet untuk mencatat perubahan.`
+        );
+      }
+    }
+  }
+
   public static init() {
     if (typeof window === 'undefined') return;
 
@@ -322,10 +332,16 @@ export class StorageService {
     groups[grpIndex] = grp;
 
     this.saveGroups(groups);
-    this.enqueuePending('group', grp);
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveGroup(grp).catch((err) =>
+        console.warn('Supabase saveGroup notice:', err)
+      );
+    }
   }
 
   public static addTransaction(transaction: Omit<Transaction, 'id' | 'updatedAt' | 'syncStatus'>): Transaction {
+    this.assertOnline('mencatat transaksi');
+
     const id = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     
     // Fallback to first available asset if not selected
@@ -343,7 +359,7 @@ export class StorageService {
       assetId: finalAssetId,
       id,
       updatedAt: Date.now(),
-      syncStatus: this.syncState.isOnline ? 'synced' : 'offline',
+      syncStatus: 'synced',
     };
 
     const current = this.getTransactions();
@@ -354,14 +370,20 @@ export class StorageService {
     const delta = newTx.type === 'income' ? newTx.amount : -newTx.amount;
     this.adjustAssetBalance(newTx.groupId, newTx.assetId, delta);
 
-    // Queue for sync
-    this.enqueuePending('transaction', newTx);
-    this.triggerCloudSync();
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveTransaction(newTx).catch((err) => {
+        console.warn('Supabase saveTransaction error:', err);
+        this.syncState.syncError = err.message || 'Gagal menyimpan transaksi ke cloud';
+        this.notify();
+      });
+    }
 
     return newTx;
   }
 
   public static updateTransaction(id: string, updates: Partial<Transaction>): Transaction | null {
+    this.assertOnline('mengubah transaksi');
+
     const current = this.getTransactions();
     const index = current.findIndex((t) => t.id === id);
     if (index === -1) return null;
@@ -377,7 +399,7 @@ export class StorageService {
       ...updates,
       id,
       updatedAt: Date.now(),
-      syncStatus: this.syncState.isOnline ? 'synced' : 'offline',
+      syncStatus: 'synced',
     };
 
     // Apply new transaction's impact on new asset
@@ -387,8 +409,13 @@ export class StorageService {
     current[index] = updatedTx;
     this.saveTransactions(current);
 
-    this.enqueuePending('transaction', updatedTx);
-    this.triggerCloudSync();
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveTransaction(updatedTx).catch((err) => {
+        console.warn('Supabase updateTransaction error:', err);
+        this.syncState.syncError = err.message || 'Gagal mengubah transaksi di cloud';
+        this.notify();
+      });
+    }
 
     return updatedTx;
   }
@@ -454,6 +481,8 @@ export class StorageService {
   }
 
   public static deleteTransaction(id: string): boolean {
+    this.assertOnline('menghapus transaksi');
+
     const current = this.getTransactions();
     const item = current.find((t) => t.id === id);
     if (!item) return false;
@@ -467,12 +496,14 @@ export class StorageService {
     this.saveTransactions(filtered);
     this.addDeletedTxId(id);
 
-    // Also fire immediate delete endpoint if online
-    if (this.syncState.isOnline) {
-      fetch(`/api/transactions/${id}`, { method: 'DELETE' }).catch(() => {});
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.deleteTransaction(id).catch((err) => {
+        console.warn('Supabase deleteTransaction error:', err);
+        this.syncState.syncError = err.message || 'Gagal menghapus transaksi di cloud';
+        this.notify();
+      });
     }
 
-    this.triggerCloudSync();
     return true;
   }
 
@@ -586,6 +617,8 @@ export class StorageService {
       affectAssetBalance?: boolean;
     }
   ): DebtRecord {
+    this.assertOnline('mencatat data utang/piutang');
+
     const id = `debt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const newDebt: DebtRecord = {
       ...debt,
@@ -686,10 +719,18 @@ export class StorageService {
       this.saveDebts(this.getDebts().map((d) => (d.id === newDebt.id ? newDebt : d)));
     }
 
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveDebt(newDebt).catch((err) =>
+        console.warn('Supabase saveDebt notice:', err)
+      );
+    }
+
     return newDebt;
   }
 
   public static updateDebt(id: string, updates: Partial<DebtRecord>): DebtRecord | null {
+    this.assertOnline('mengubah data utang/piutang');
+
     const current = this.getDebts();
     const index = current.findIndex((d) => d.id === id);
     if (index === -1) return null;
@@ -714,10 +755,19 @@ export class StorageService {
 
     current[index] = updated;
     this.saveDebts(current);
+
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveDebt(updated).catch((err) =>
+        console.warn('Supabase updateDebt notice:', err)
+      );
+    }
+
     return updated;
   }
 
   public static deleteDebt(id: string): boolean {
+    this.assertOnline('menghapus data utang/piutang');
+
     const current = this.getDebts();
     const target = current.find((d) => d.id === id);
     if (target) {
@@ -743,11 +793,12 @@ export class StorageService {
     this.saveDebts(filtered);
     this.addDeletedDebtId(id);
 
-    if (this.syncState.isOnline) {
-      fetch(`/api/debts/${id}`, { method: 'DELETE' }).catch(() => {});
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.deleteDebt(id).catch((err) =>
+        console.warn('Supabase deleteDebt notice:', err)
+      );
     }
 
-    this.triggerCloudSync();
     return true;
   }
 
@@ -762,6 +813,8 @@ export class StorageService {
     },
     affectAssetBalance: boolean = true
   ): DebtRecord | null {
+    this.assertOnline('mencatat pembayaran cicilan utang/piutang');
+
     const current = this.getDebts();
     const index = current.findIndex((d) => d.id === debtId);
     if (index === -1) return null;
@@ -875,11 +928,17 @@ export class StorageService {
 
     current[index] = updated;
     this.saveDebts(current);
-    this.triggerCloudSync();
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveDebt(updated).catch((err) =>
+        console.warn('Supabase saveDebt notice:', err)
+      );
+    }
     return updated;
   }
 
   public static deleteDebtPayment(debtId: string, paymentId: string): DebtRecord | null {
+    this.assertOnline('menghapus pembayaran cicilan utang/piutang');
+
     const current = this.getDebts();
     const index = current.findIndex((d) => d.id === debtId);
     if (index === -1) return null;
@@ -920,7 +979,11 @@ export class StorageService {
 
     current[index] = updatedDebt;
     this.saveDebts(current);
-    this.triggerCloudSync();
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveDebt(updatedDebt).catch((err) =>
+        console.warn('Supabase saveDebt notice:', err)
+      );
+    }
     return updatedDebt;
   }
 
@@ -933,6 +996,8 @@ export class StorageService {
       note?: string;
     }
   ): DebtRecord | null {
+    this.assertOnline('mengubah pembayaran cicilan utang/piutang');
+
     const current = this.getDebts();
     const index = current.findIndex((d) => d.id === debtId);
     if (index === -1) return null;
@@ -989,7 +1054,11 @@ export class StorageService {
 
     current[index] = updatedDebt;
     this.saveDebts(current);
-    this.triggerCloudSync();
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveDebt(updatedDebt).catch((err) =>
+        console.warn('Supabase saveDebt notice:', err)
+      );
+    }
     return updatedDebt;
   }
 
@@ -1032,6 +1101,8 @@ export class StorageService {
   }
 
   public static addCategory(cat: Omit<Category, 'id' | 'updatedAt'>): Category {
+    this.assertOnline('menambah kategori');
+
     const id = `cat-${Date.now()}`;
     const newCat: Category = {
       ...cat,
@@ -1041,12 +1112,19 @@ export class StorageService {
     const current = this.getCategories();
     const updated = [...current, newCat];
     this.saveCategories(updated);
-    this.enqueuePending('category', newCat);
-    this.triggerCloudSync();
+
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveCategory(newCat).catch((err) =>
+        console.warn('Supabase saveCategory notice:', err)
+      );
+    }
+
     return newCat;
   }
 
   public static updateCategory(id: string, updates: Partial<Category>): Category | null {
+    this.assertOnline('mengubah kategori');
+
     const current = this.getCategories();
     const index = current.findIndex((c) => c.id === id);
     if (index === -1) return null;
@@ -1059,22 +1137,30 @@ export class StorageService {
     };
     current[index] = updatedCat;
     this.saveCategories(current);
-    this.enqueuePending('category', updatedCat);
-    this.triggerCloudSync();
+
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveCategory(updatedCat).catch((err) =>
+        console.warn('Supabase updateCategory notice:', err)
+      );
+    }
+
     return updatedCat;
   }
 
   public static deleteCategory(id: string): boolean {
+    this.assertOnline('menghapus kategori');
+
     const current = this.getCategories();
     const filtered = current.filter((c) => c.id !== id);
     this.saveCategories(filtered);
     this.addDeletedCatId(id);
 
-    if (this.syncState.isOnline) {
-      fetch(`/api/categories/${id}`, { method: 'DELETE' }).catch(() => {});
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.deleteCategory(id).catch((err) =>
+        console.warn('Supabase deleteCategory notice:', err)
+      );
     }
 
-    this.triggerCloudSync();
     return true;
   }
 
@@ -1117,6 +1203,8 @@ export class StorageService {
   }
 
   public static addGroup(group: Omit<FamilyGroup, 'id' | 'updatedAt'>): FamilyGroup {
+    this.assertOnline('menambah grup keluarga');
+
     const id = `grp-${Date.now()}`;
     const newGroup: FamilyGroup = {
       ...group,
@@ -1127,12 +1215,19 @@ export class StorageService {
     const updated = [...current, newGroup];
     this.saveGroups(updated);
     this.setCurrentGroupId(id);
-    this.enqueuePending('group', newGroup);
-    this.triggerCloudSync();
+
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveGroup(newGroup).catch((err) =>
+        console.warn('Supabase saveGroup notice:', err)
+      );
+    }
+
     return newGroup;
   }
 
   public static updateGroup(id: string, updates: Partial<FamilyGroup>): FamilyGroup | null {
+    this.assertOnline('mengubah data grup/rekening');
+
     const current = this.getGroups();
     const index = current.findIndex((g) => g.id === id);
     if (index === -1) return null;
@@ -1145,12 +1240,19 @@ export class StorageService {
     };
     current[index] = updatedGroup;
     this.saveGroups(current);
-    this.enqueuePending('group', updatedGroup);
-    this.triggerCloudSync();
+
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveGroup(updatedGroup).catch((err) =>
+        console.warn('Supabase updateGroup notice:', err)
+      );
+    }
+
     return updatedGroup;
   }
 
   public static deleteGroup(id: string): boolean {
+    this.assertOnline('menghapus grup keluarga');
+
     const current = this.getGroups();
     if (current.length <= 1) return false;
 
@@ -1163,11 +1265,12 @@ export class StorageService {
       this.setCurrentGroupId(filtered[0].id);
     }
 
-    if (this.syncState.isOnline) {
-      fetch(`/api/groups/${id}`, { method: 'DELETE' }).catch(() => {});
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.deleteGroup(id).catch((err) =>
+        console.warn('Supabase deleteGroup notice:', err)
+      );
     }
 
-    this.triggerCloudSync();
     return true;
   }
 
@@ -1258,32 +1361,47 @@ export class StorageService {
     const deletedDebtIds = this.getDeletedDebtIds();
 
     try {
-      // 1. Primary: Direct Supabase Cloud Sync
+      // 1. Primary: Direct Supabase Cloud Pull
+      // CLOUD IS THE SINGLE SOURCE OF TRUTH. LOCAL NEVER OVERWRITES CLOUD!
       if (isSupabaseConfigured()) {
         try {
-          const remoteData = await SupabaseSyncService.sync({
-            transactions: localTransactions,
-            categories: localCategories,
-            groups: localGroups,
-            debts: localDebts,
-            deletedTxIds,
-            deletedCatIds,
-            deletedGrpIds,
-            deletedDebtIds,
-          });
+          const remote = await SupabaseSyncService.pullFromSupabase();
 
-          this.mergeRemoteStore(remoteData);
+          if (remote.isInitialized) {
+            // Cloud has data: refresh local cache with canonical data from Supabase
+            this.saveGroups(remote.groups);
+            this.saveCategories(remote.categories);
+            this.saveTransactions(remote.transactions);
+            this.saveDebts(remote.debts);
+          } else {
+            // First time ever: Supabase is brand new and empty (0 groups)
+            // Seed initial starting data to Supabase once
+            await SupabaseSyncService.seedIfEmpty(
+              DEFAULT_GROUPS,
+              DEFAULT_CATEGORIES,
+              DEFAULT_DEBTS
+            );
+            const fresh = await SupabaseSyncService.pullFromSupabase();
+            if (fresh.isInitialized) {
+              this.saveGroups(fresh.groups);
+              this.saveCategories(fresh.categories);
+              this.saveTransactions(fresh.transactions);
+              this.saveDebts(fresh.debts);
+            }
+          }
+
           this.clearPendingQueue();
           this.syncState.lastSyncedAt = Date.now();
           this.syncState.syncError = null;
           localStorage.setItem(STORAGE_KEYS.LAST_SYNC, String(this.syncState.lastSyncedAt));
+          this.notify();
           return;
         } catch (supaErr: any) {
           if (supaErr?.code === 'PGRST205' || supaErr?.message?.includes('schema cache')) {
             this.syncState.syncError = 'Tabel database Supabase belum dibuat. Jalankan supabase_schema.sql di Supabase SQL Editor.';
             return;
           }
-          console.warn('Supabase sync notice:', supaErr);
+          console.warn('Supabase pull notice:', supaErr);
           this.syncState.syncError = supaErr.message || 'Gagal sinkronisasi Supabase';
         }
       }

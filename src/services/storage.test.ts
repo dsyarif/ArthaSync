@@ -18,7 +18,10 @@ const store: Record<string, string> = {};
 
 (globalThis as any).fetch = async () => ({
   ok: true,
-  json: async () => ({}),
+  status: 200,
+  text: async () => '[]',
+  json: async () => ([]),
+  headers: new Headers(),
 });
 
 import { StorageService } from './storage.ts';

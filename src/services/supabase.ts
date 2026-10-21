@@ -29,6 +29,19 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http'));
 }
 
+/**
+ * Validates online connection. Throws descriptive error if offline in browser.
+ */
+export function assertOnline(actionName: string = 'menyimpan data') {
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+    if (!navigator.onLine) {
+      throw new Error(
+        `Koneksi internet diperlukan untuk ${actionName}. Anda sedang dalam Mode Offline (Hanya Lihat). Hubungkan perangkat ke internet untuk melanjutkan.`
+      );
+    }
+  }
+}
+
 // ----------------------------------------------------
 // Serialization / Deserialization Mappers
 // ----------------------------------------------------
@@ -223,120 +236,33 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 }
 
 // ----------------------------------------------------
-// Cloud Sync with Supabase (Push & Pull)
+// Cloud-First Supabase Operations
+// Local is a read cache of Supabase; Cloud is Single Source of Truth
 // ----------------------------------------------------
-
-export interface SyncPayload {
-  transactions: Transaction[];
-  categories: Category[];
-  groups: FamilyGroup[];
-  debts: DebtRecord[];
-  deletedTxIds: string[];
-  deletedCatIds: string[];
-  deletedGrpIds: string[];
-  deletedDebtIds: string[];
-}
 
 export interface RemoteSyncResult {
   transactions: Transaction[];
   categories: Category[];
   groups: FamilyGroup[];
   debts: DebtRecord[];
+  isInitialized: boolean;
 }
 
 export class SupabaseSyncService {
   private static realtimeChannel: RealtimeChannel | null = null;
 
   /**
-   * Push local changes and deletions to Supabase, then fetch latest remote data.
+   * PULL ONLY: Fetches the deployed cloud data from Supabase.
+   * Local storage will be refreshed with this canonical data.
    */
-  public static async sync(payload: SyncPayload): Promise<RemoteSyncResult> {
-    // 1. Process soft deletions in Supabase
-    if (payload.deletedTxIds.length > 0) {
-      for (const chunk of chunkArray(payload.deletedTxIds, 100)) {
-        await supabase
-          .from('transactions')
-          .update({ is_deleted: true, updated_at: Date.now() })
-          .in('id', chunk);
-      }
-    }
-    if (payload.deletedCatIds.length > 0) {
-      for (const chunk of chunkArray(payload.deletedCatIds, 100)) {
-        await supabase
-          .from('categories')
-          .update({ is_deleted: true, updated_at: Date.now() })
-          .in('id', chunk);
-      }
-    }
-    if (payload.deletedGrpIds.length > 0) {
-      for (const chunk of chunkArray(payload.deletedGrpIds, 100)) {
-        await supabase
-          .from('groups')
-          .update({ is_deleted: true, updated_at: Date.now() })
-          .in('id', chunk);
-      }
-    }
-    if (payload.deletedDebtIds.length > 0) {
-      for (const chunk of chunkArray(payload.deletedDebtIds, 100)) {
-        await supabase
-          .from('debts')
-          .update({ is_deleted: true, updated_at: Date.now() })
-          .in('id', chunk);
-      }
-    }
+  public static async pullFromSupabase(): Promise<RemoteSyncResult> {
+    assertOnline('mengambil data dari cloud');
 
-    // 2. Upsert local items to Supabase
-    if (payload.groups.length > 0) {
-      const rows = payload.groups.map(toSupabaseGroup);
-      for (const chunk of chunkArray(rows, 100)) {
-        const { error } = await supabase.from('groups').upsert(chunk, { onConflict: 'id' });
-        if (error) throw error;
-      }
-    }
-
-    if (payload.categories.length > 0) {
-      const rows = payload.categories.map(toSupabaseCategory);
-      for (const chunk of chunkArray(rows, 100)) {
-        const { error } = await supabase.from('categories').upsert(chunk, { onConflict: 'id' });
-        if (error) throw error;
-      }
-    }
-
-    if (payload.transactions.length > 0) {
-      const activeTxs = payload.transactions.filter(
-        (t) => !payload.deletedTxIds.includes(t.id) && !t.isDeleted
-      );
-      const rows = activeTxs.map(toSupabaseTx);
-      for (const chunk of chunkArray(rows, 100)) {
-        const { error } = await supabase.from('transactions').upsert(chunk, { onConflict: 'id' });
-        if (error) throw error;
-      }
-    }
-
-    if (payload.debts.length > 0) {
-      const activeDebts = payload.debts.filter(
-        (d) => !payload.deletedDebtIds.includes(d.id) && !d.isDeleted
-      );
-      const rows = activeDebts.map(toSupabaseDebt);
-      for (const chunk of chunkArray(rows, 100)) {
-        const { error } = await supabase.from('debts').upsert(chunk, { onConflict: 'id' });
-        if (error) throw error;
-      }
-    }
-
-    // 3. Fetch latest active remote data
-    return await this.fetchRemoteData();
-  }
-
-  /**
-   * Fetch all records from Supabase
-   */
-  public static async fetchRemoteData(): Promise<RemoteSyncResult> {
     const [txRes, catRes, grpRes, debtRes] = await Promise.all([
-      supabase.from('transactions').select('*'),
-      supabase.from('categories').select('*'),
-      supabase.from('groups').select('*'),
-      supabase.from('debts').select('*'),
+      supabase.from('transactions').select('*').eq('is_deleted', false).order('date', { ascending: false }),
+      supabase.from('categories').select('*').eq('is_deleted', false),
+      supabase.from('groups').select('*').eq('is_deleted', false),
+      supabase.from('debts').select('*').eq('is_deleted', false).order('date', { ascending: false }),
     ]);
 
     if (txRes.error) throw txRes.error;
@@ -344,16 +270,142 @@ export class SupabaseSyncService {
     if (grpRes.error) throw grpRes.error;
     if (debtRes.error) throw debtRes.error;
 
+    const groups = (grpRes.data || []).map(fromSupabaseGroup);
+    const categories = (catRes.data || []).map(fromSupabaseCategory);
+    const transactions = (txRes.data || []).map(fromSupabaseTx);
+    const debts = (debtRes.data || []).map(fromSupabaseDebt);
+
     return {
-      transactions: (txRes.data || []).map(fromSupabaseTx),
-      categories: (catRes.data || []).map(fromSupabaseCategory),
-      groups: (grpRes.data || []).map(fromSupabaseGroup),
-      debts: (debtRes.data || []).map(fromSupabaseDebt),
+      groups,
+      categories,
+      transactions,
+      debts,
+      isInitialized: groups.length > 0,
     };
   }
 
   /**
-   * Subscribe to Supabase Realtime changes across all tables
+   * Saves a single transaction directly to Supabase.
+   * Requires active internet connection.
+   */
+  public static async saveTransaction(tx: Transaction): Promise<void> {
+    assertOnline('mencatat transaksi');
+    const row = toSupabaseTx(tx);
+    const { error } = await supabase.from('transactions').upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  /**
+   * Soft-deletes a transaction in Supabase.
+   * Requires active internet connection.
+   */
+  public static async deleteTransaction(id: string): Promise<void> {
+    assertOnline('menghapus transaksi');
+    const { error } = await supabase
+      .from('transactions')
+      .update({ is_deleted: true, updated_at: Date.now() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  /**
+   * Saves a group / updated asset balance directly to Supabase.
+   */
+  public static async saveGroup(group: FamilyGroup): Promise<void> {
+    assertOnline('menyimpan rekening / grup');
+    const row = toSupabaseGroup(group);
+    const { error } = await supabase.from('groups').upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  /**
+   * Soft-deletes a group in Supabase.
+   */
+  public static async deleteGroup(id: string): Promise<void> {
+    assertOnline('menghapus grup');
+    const { error } = await supabase
+      .from('groups')
+      .update({ is_deleted: true, updated_at: Date.now() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  /**
+   * Saves a category directly to Supabase.
+   */
+  public static async saveCategory(cat: Category): Promise<void> {
+    assertOnline('menyimpan kategori');
+    const row = toSupabaseCategory(cat);
+    const { error } = await supabase.from('categories').upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  /**
+   * Soft-deletes a category in Supabase.
+   */
+  public static async deleteCategory(id: string): Promise<void> {
+    assertOnline('menghapus kategori');
+    const { error } = await supabase
+      .from('categories')
+      .update({ is_deleted: true, updated_at: Date.now() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  /**
+   * Saves a debt record directly to Supabase.
+   */
+  public static async saveDebt(debt: DebtRecord): Promise<void> {
+    assertOnline('menyimpan utang/piutang');
+    const row = toSupabaseDebt(debt);
+    const { error } = await supabase.from('debts').upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  /**
+   * Soft-deletes a debt record in Supabase.
+   */
+  public static async deleteDebt(id: string): Promise<void> {
+    assertOnline('menghapus utang/piutang');
+    const { error } = await supabase
+      .from('debts')
+      .update({ is_deleted: true, updated_at: Date.now() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  /**
+   * Only seeds initial starting data if Supabase tables are completely empty (0 groups).
+   * Once populated, this will never be called again.
+   */
+  public static async seedIfEmpty(
+    initialGroups: FamilyGroup[],
+    initialCategories: Category[],
+    initialDebts: DebtRecord[]
+  ): Promise<boolean> {
+    assertOnline('inisialisasi data awal');
+    const { data, error } = await supabase.from('groups').select('id').limit(1);
+    if (error) return false;
+    if (data && data.length > 0) {
+      // Cloud database already has data, do NOT overwrite!
+      return false;
+    }
+
+    // Supabase is completely empty, insert initial template once
+    for (const chunk of chunkArray(initialGroups.map(toSupabaseGroup), 100)) {
+      await supabase.from('groups').upsert(chunk);
+    }
+    for (const chunk of chunkArray(initialCategories.map(toSupabaseCategory), 100)) {
+      await supabase.from('categories').upsert(chunk);
+    }
+    for (const chunk of chunkArray(initialDebts.map(toSupabaseDebt), 100)) {
+      await supabase.from('debts').upsert(chunk);
+    }
+    return true;
+  }
+
+  /**
+   * Realtime Listener: Automatically re-fetches when any device makes a change in Supabase.
    */
   public static subscribeRealtime(onChange: () => void) {
     if (this.realtimeChannel) {
@@ -363,7 +415,7 @@ export class SupabaseSyncService {
 
     try {
       this.realtimeChannel = supabase
-        .channel('arthasync-live-sync')
+        .channel('arthasync-live-channel')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'transactions' },
@@ -384,13 +436,9 @@ export class SupabaseSyncService {
           { event: '*', schema: 'public', table: 'debts' },
           () => onChange()
         )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            // Channel ready
-          }
-        });
+        .subscribe();
     } catch (err) {
-      console.warn('Supabase Realtime subscription error:', err);
+      console.warn('Realtime subscription notice:', err);
     }
 
     return () => {

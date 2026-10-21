@@ -482,6 +482,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </button>
           </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            💡 <b>Prinsip Cloud-First:</b> Database Supabase adalah satu-satunya sumber data utama. Data lokal pada perangkat tidak akan pernah menimpa atau merusak data yang telah ada di cloud. Pencatatan transaksi baru hanya dapat disimpan ketika perangkat terhubung ke internet untuk menjamin konsistensi seluruh perangkat.
+          </div>
         </div>
 
         {/* 5. Cadangan & Ekspor Data */}

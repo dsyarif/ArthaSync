@@ -27,7 +27,7 @@ import {
   Transaction,
   TransactionType,
 } from './types/finance';
-import { Plus } from 'lucide-react';
+import { Plus, WifiOff } from 'lucide-react';
 
 export default function App() {
   // Navigation State
@@ -144,18 +144,30 @@ export default function App() {
 
   // Transaction Actions
   const handleOpenQuickAdd = () => {
+    if (!syncState.isOnline) {
+      alert('Koneksi internet diperlukan untuk mencatat transaksi baru. Anda sedang dalam Mode Offline (Hanya Lihat).');
+      return;
+    }
     setEditingTransaction(null);
     setDuplicateTransaction(null);
     setTxModalOpen(true);
   };
 
   const handleEditTransaction = (tx: Transaction) => {
+    if (!syncState.isOnline) {
+      alert('Koneksi internet diperlukan untuk mengedit transaksi. Anda sedang dalam Mode Offline (Hanya Lihat).');
+      return;
+    }
     setEditingTransaction(tx);
     setDuplicateTransaction(null);
     setTxModalOpen(true);
   };
 
   const handleDuplicateTransaction = (tx: Transaction) => {
+    if (!syncState.isOnline) {
+      alert('Koneksi internet diperlukan untuk menduplikasi transaksi. Anda sedang dalam Mode Offline (Hanya Lihat).');
+      return;
+    }
     setDuplicateTransaction(tx);
     setEditingTransaction(null);
     setTxModalOpen(true);
@@ -173,11 +185,19 @@ export default function App() {
     memberId: string;
     groupId: string;
   }) => {
-    StorageService.addTransaction(txData);
+    try {
+      StorageService.addTransaction(txData);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mencatat transaksi.');
+    }
   };
 
   const handleInlineUpdateTransaction = (id: string, updates: Partial<Transaction>) => {
-    StorageService.updateTransaction(id, updates);
+    try {
+      StorageService.updateTransaction(id, updates);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mengubah transaksi.');
+    }
   };
 
   const handleSaveTransaction = (txData: {
@@ -192,17 +212,25 @@ export default function App() {
     memberId: string;
     groupId: string;
   }) => {
-    if (editingTransaction) {
-      StorageService.updateTransaction(editingTransaction.id, txData);
-    } else {
-      StorageService.addTransaction(txData);
+    try {
+      if (editingTransaction) {
+        StorageService.updateTransaction(editingTransaction.id, txData);
+      } else {
+        StorageService.addTransaction(txData);
+      }
+      setDuplicateTransaction(null);
+      setTxModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk menyimpan transaksi.');
     }
-    setDuplicateTransaction(null);
-    setTxModalOpen(false);
   };
 
   const handleDeleteTransaction = (id: string) => {
-    StorageService.deleteTransaction(id);
+    try {
+      StorageService.deleteTransaction(id);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk menghapus transaksi.');
+    }
   };
 
   // Transfer Actions
@@ -217,7 +245,11 @@ export default function App() {
     time: string;
     note?: string;
   }) => {
-    return StorageService.transferBetweenAssets(data);
+    try {
+      return StorageService.transferBetweenAssets(data);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk melakukan transfer saldo.');
+    }
   };
 
   // Debt & Piutang Actions
@@ -225,15 +257,27 @@ export default function App() {
     debtData: Omit<DebtRecord, 'id' | 'createdAt' | 'updatedAt' | 'paidAmount' | 'payments' | 'status'>,
     options?: { affectAssetBalance?: boolean; assetId?: string }
   ) => {
-    StorageService.addDebt(debtData, options);
+    try {
+      StorageService.addDebt(debtData, options);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mencatat utang/piutang.');
+    }
   };
 
   const handleUpdateDebt = (id: string, updates: Partial<DebtRecord>) => {
-    StorageService.updateDebt(id, updates);
+    try {
+      StorageService.updateDebt(id, updates);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mengubah utang/piutang.');
+    }
   };
 
   const handleDeleteDebt = (id: string) => {
-    StorageService.deleteDebt(id);
+    try {
+      StorageService.deleteDebt(id);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk menghapus utang/piutang.');
+    }
   };
 
   const handleAddDebtPayment = (
@@ -241,11 +285,19 @@ export default function App() {
     payment: { amount: number; date: string; note?: string; assetId?: string; recipientAssetId?: string },
     affectAssetBalance?: boolean
   ) => {
-    StorageService.addDebtPayment(debtId, payment, affectAssetBalance);
+    try {
+      StorageService.addDebtPayment(debtId, payment, affectAssetBalance);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mencatat pembayaran cicilan.');
+    }
   };
 
   const handleDeleteDebtPayment = (debtId: string, paymentId: string) => {
-    StorageService.deleteDebtPayment(debtId, paymentId);
+    try {
+      StorageService.deleteDebtPayment(debtId, paymentId);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk menghapus pembayaran cicilan.');
+    }
   };
 
   const handleUpdateDebtPayment = (
@@ -253,7 +305,11 @@ export default function App() {
     paymentId: string,
     updates: { amount: number; date: string; note?: string }
   ) => {
-    StorageService.updateDebtPayment(debtId, paymentId, updates);
+    try {
+      StorageService.updateDebtPayment(debtId, paymentId, updates);
+    } catch (err: any) {
+      alert(err.message || 'Koneksi internet diperlukan untuk mengubah pembayaran cicilan.');
+    }
   };
 
   // Category Actions
@@ -348,6 +404,24 @@ export default function App() {
         {/* ONLY THIS MAIN CONTENT IS SCROLLABLE! */}
         <main className="flex-1 overflow-y-auto overscroll-contain px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 lg:pb-8">
           <div className="max-w-7xl w-full mx-auto">
+            {/* Offline Alert Banner */}
+            {!syncState.isOnline && (
+              <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <WifiOff className="w-4 h-4 shrink-0 text-amber-500" />
+                  <span>
+                    <b>Mode Offline (Hanya Lihat):</b> Perangkat tidak terhubung ke internet. Anda hanya dapat melihat data. Koneksi internet diperlukan untuk mencatat atau mengubah transaksi.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => StorageService.triggerCloudSync()}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-bold hover:bg-amber-600 cursor-pointer shrink-0"
+                >
+                  Hubungkan
+                </button>
+              </div>
+            )}
         {activeTab === 'dashboard' && (
           <DashboardView
             transactions={transactions}
@@ -467,6 +541,7 @@ export default function App() {
       {/* Transaction Add / Edit / Duplicate Modal Dialog */}
       <TransactionModal
         isOpen={txModalOpen}
+        isOnline={syncState.isOnline}
         onClose={() => {
           setTxModalOpen(false);
           setDuplicateTransaction(null);
