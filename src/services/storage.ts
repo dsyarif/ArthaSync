@@ -1,4 +1,5 @@
 import { AssetAccount, Category, CloudSyncState, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
+import { isSupabaseConfigured, SupabaseSyncService } from './supabase';
 
 const STORAGE_KEYS = {
   TRANSACTIONS: 'arthasync_transactions_v1',
@@ -144,6 +145,7 @@ export const DEFAULT_GROUPS: FamilyGroup[] = [
 export class StorageService {
   private static listeners: Set<() => void> = new Set();
   private static sseSource: EventSource | null = null;
+  private static unsubscribeSupabaseRealtime: (() => void) | null = null;
   private static syncState: CloudSyncState = {
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     isSyncing: false,
@@ -194,6 +196,7 @@ export class StorageService {
       if (!this.syncState.simulatedOffline) {
         this.syncState.isOnline = true;
         this.notify();
+        this.initRealtime();
         this.triggerCloudSync();
       }
     });
@@ -203,8 +206,8 @@ export class StorageService {
       this.notify();
     });
 
-    // Initialize SSE real-time listener if online
-    this.initSSE();
+    // Initialize real-time listeners if online
+    this.initRealtime();
 
     // Trigger initial sync to pull server data or push offline data
     this.triggerCloudSync();
@@ -217,11 +220,33 @@ export class StorageService {
     this.notify();
 
     if (this.syncState.isOnline) {
-      this.initSSE();
+      this.initRealtime();
       this.triggerCloudSync();
-    } else if (this.sseSource) {
-      this.sseSource.close();
-      this.sseSource = null;
+    } else {
+      if (this.unsubscribeSupabaseRealtime) {
+        this.unsubscribeSupabaseRealtime();
+        this.unsubscribeSupabaseRealtime = null;
+      }
+      if (this.sseSource) {
+        this.sseSource.close();
+        this.sseSource = null;
+      }
+    }
+  }
+
+  private static initRealtime() {
+    if (!this.syncState.isOnline) return;
+
+    if (isSupabaseConfigured()) {
+      if (this.unsubscribeSupabaseRealtime) {
+        this.unsubscribeSupabaseRealtime();
+        this.unsubscribeSupabaseRealtime = null;
+      }
+      this.unsubscribeSupabaseRealtime = SupabaseSyncService.subscribeRealtime(() => {
+        this.triggerCloudSync();
+      });
+    } else {
+      this.initSSE();
     }
   }
 
@@ -1223,12 +1248,47 @@ export class StorageService {
     this.syncState.syncError = null;
     this.notify();
 
-    try {
-      const localTransactions = this.getTransactions();
-      const localCategories = this.getCategories();
-      const localGroups = this.getGroups();
-      const localDebts = this.getDebts();
+    const localTransactions = this.getTransactions();
+    const localCategories = this.getCategories();
+    const localGroups = this.getGroups();
+    const localDebts = this.getDebts();
+    const deletedTxIds = this.getDeletedTxIds();
+    const deletedCatIds = this.getDeletedCatIds();
+    const deletedGrpIds = this.getDeletedGrpIds();
+    const deletedDebtIds = this.getDeletedDebtIds();
 
+    try {
+      // 1. Primary: Direct Supabase Cloud Sync
+      if (isSupabaseConfigured()) {
+        try {
+          const remoteData = await SupabaseSyncService.sync({
+            transactions: localTransactions,
+            categories: localCategories,
+            groups: localGroups,
+            debts: localDebts,
+            deletedTxIds,
+            deletedCatIds,
+            deletedGrpIds,
+            deletedDebtIds,
+          });
+
+          this.mergeRemoteStore(remoteData);
+          this.clearPendingQueue();
+          this.syncState.lastSyncedAt = Date.now();
+          this.syncState.syncError = null;
+          localStorage.setItem(STORAGE_KEYS.LAST_SYNC, String(this.syncState.lastSyncedAt));
+          return;
+        } catch (supaErr: any) {
+          if (supaErr?.code === 'PGRST205' || supaErr?.message?.includes('schema cache')) {
+            this.syncState.syncError = 'Tabel database Supabase belum dibuat. Jalankan supabase_schema.sql di Supabase SQL Editor.';
+            return;
+          }
+          console.warn('Supabase sync notice:', supaErr);
+          this.syncState.syncError = supaErr.message || 'Gagal sinkronisasi Supabase';
+        }
+      }
+
+      // 2. Secondary Fallback: Local /api/sync
       const response = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1237,31 +1297,30 @@ export class StorageService {
           categories: localCategories,
           groups: localGroups,
           debts: localDebts,
-          deletedTxIds: this.getDeletedTxIds(),
-          deletedCatIds: this.getDeletedCatIds(),
-          deletedGrpIds: this.getDeletedGrpIds(),
-          deletedDebtIds: this.getDeletedDebtIds(),
+          deletedTxIds,
+          deletedCatIds,
+          deletedGrpIds,
+          deletedDebtIds,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Cloud sync response error: ${response.status}`);
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error('Respon server bukan format JSON yang valid (lingkungan statis / backend belum aktif)');
-      }
-
-      const resData = await response.json();
-      if (resData.success && resData.data) {
-        this.mergeRemoteStore(resData.data);
-        this.clearPendingQueue();
-        this.syncState.lastSyncedAt = Date.now();
-        localStorage.setItem(STORAGE_KEYS.LAST_SYNC, String(this.syncState.lastSyncedAt));
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const resData = await response.json();
+          if (resData.success && resData.data) {
+            this.mergeRemoteStore(resData.data);
+            this.clearPendingQueue();
+            this.syncState.lastSyncedAt = Date.now();
+            this.syncState.syncError = null;
+            localStorage.setItem(STORAGE_KEYS.LAST_SYNC, String(this.syncState.lastSyncedAt));
+          }
+        }
       }
     } catch (err: any) {
-      this.syncState.syncError = err.message || 'Gagal sinkronisasi';
+      if (!this.syncState.syncError) {
+        this.syncState.syncError = err.message || 'Gagal sinkronisasi';
+      }
     } finally {
       this.syncState.isSyncing = false;
       this.updatePendingCount();

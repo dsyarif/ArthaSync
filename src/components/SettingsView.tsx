@@ -18,6 +18,7 @@ import {
   WifiOff,
   Trash2,
   RotateCcw,
+  Database,
 } from 'lucide-react';
 import {
   CloudSyncState,
@@ -31,6 +32,7 @@ import { BiometricService } from '../services/biometric';
 import { NotificationService } from '../services/notification';
 import { StorageService } from '../services/storage';
 import { generateCsvData } from '../utils/finance';
+import { SUPABASE_URL, isSupabaseConfigured } from '../services/supabase';
 
 interface SettingsViewProps {
   darkMode: boolean;
@@ -380,16 +382,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 4. Sinkronisasi Cloud & Mode Offline */}
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-            <Cloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              Sinkronisasi Cloud Real-Time & Mode Offline
-            </h2>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <Cloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Sinkronisasi Cloud Real-Time & Mode Offline
+              </h2>
+            </div>
+            {isSupabaseConfigured() && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <Database className="w-3 h-3" />
+                Supabase PostgreSQL
+              </span>
+            )}
           </div>
+
+          {/* Supabase status / error banner */}
+          {syncState.syncError && (
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-amber-800 dark:text-amber-200">
+                  Perhatian Sinkronisasi Cloud:
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                  {syncState.syncError}
+                </p>
+                {syncState.syncError.includes('supabase_schema.sql') && (
+                  <p className="text-[11px] text-amber-900 dark:text-amber-100 font-semibold pt-1">
+                    Petunjuk: Buka Dashboard Supabase Anda &rarr; Klik menu <b>SQL Editor</b> &rarr; Paste isi file <code className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded text-[10px]">supabase_schema.sql</code> &rarr; Klik <b>Run</b>.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
-              <span className="text-[11px] text-slate-500">Status Server:</span>
+              <span className="text-[11px] text-slate-500">Status Penyimpanan:</span>
               <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
                 <span
                   className={`w-2 h-2 rounded-full ${
@@ -398,6 +428,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
                 {syncState.isOnline ? 'Online / Real-time' : 'Offline'}
               </div>
+              <span className="text-[10px] text-slate-400 block mt-1 truncate">
+                {isSupabaseConfigured() ? 'Supabase Cloud DB' : 'Lokal / Serverless'}
+              </span>
             </div>
 
             <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
@@ -405,6 +438,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">
                 {syncState.pendingCount} Transaksi
               </div>
+              <span className="text-[10px] text-slate-400 block mt-1">
+                {syncState.pendingCount === 0 ? 'Semua tersinkron rapi' : 'Menunggu jaringan'}
+              </span>
             </div>
 
             <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
@@ -414,6 +450,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   ? new Date(syncState.lastSyncedAt).toLocaleTimeString('id-ID')
                   : 'Baru saja'}
               </div>
+              <span className="text-[10px] text-slate-400 block mt-1">
+                {syncState.lastSyncedAt
+                  ? new Date(syncState.lastSyncedAt).toLocaleDateString('id-ID')
+                  : 'Otomatis di latar belakang'}
+              </span>
             </div>
           </div>
 
@@ -421,15 +462,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               onClick={handleManualSync}
               disabled={syncState.isSyncing || !syncState.isOnline}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncState.isSyncing ? 'animate-spin' : ''}`} />
-              <span>Sinkronkan Sekarang</span>
+              <span>{syncState.isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</span>
             </button>
 
             <button
               onClick={() => StorageService.toggleSimulatedOffline()}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
                 syncState.simulatedOffline
                   ? 'bg-amber-500 text-white border-amber-600'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
