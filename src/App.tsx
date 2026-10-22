@@ -495,6 +495,7 @@ export default function App() {
             onOpenPrintReport={() => setPrintModalOpen(true)}
             year={selectedYear}
             month={selectedMonth}
+            selectedMemberFilter={selectedMemberFilter}
             onChangeMonth={(y, m) => {
               setSelectedYear(y);
               setSelectedMonth(m);

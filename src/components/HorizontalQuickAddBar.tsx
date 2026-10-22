@@ -273,8 +273,8 @@ export const HorizontalQuickAddBar: React.FC<HorizontalQuickAddBarProps> = ({
           </select>
         </div>
 
-        {/* Description Input */}
-        <div className="col-span-2 sm:col-span-1 sm:min-w-[160px] sm:flex-1">
+        {/* Description Input (Expanded Width) */}
+        <div className="col-span-2 sm:col-span-1 sm:min-w-[220px] sm:flex-1">
           <input
             type="text"
             value={description}
@@ -282,10 +282,10 @@ export const HorizontalQuickAddBar: React.FC<HorizontalQuickAddBarProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={
               type === 'expense'
-                ? 'Keterangan (makan, belanja, bensin...)'
-                : 'Keterangan (gaji, bonus, jualan...)'
+                ? 'Keterangan lengkap (makan, rincian belanja, bensin...)'
+                : 'Keterangan lengkap (gaji, tpp, sppd, freelance...)'
             }
-            className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
           />
         </div>
 

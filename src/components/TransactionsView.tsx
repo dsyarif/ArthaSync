@@ -16,6 +16,9 @@ import {
   Edit3,
   Check,
   Zap,
+  LayoutList,
+  List,
+  ArrowDownUp,
 } from 'lucide-react';
 import { Category, FamilyGroup, Transaction } from '../types/finance';
 import {
@@ -59,19 +62,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   selectedYear,
   selectedMonth,
   selectedMemberFilter,
-  onSelectMemberFilter,
   onDuplicateTransaction,
   onQuickSaveTransaction,
   onInlineUpdateTransaction,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [localSelectedMember, setLocalSelectedMember] = useState('all');
-  const currentMemberFilter = selectedMemberFilter !== undefined ? selectedMemberFilter : localSelectedMember;
-  const setMemberFilter = (val: string) => {
-    setLocalSelectedMember(val);
-    if (onSelectMemberFilter) onSelectMemberFilter(val);
-  };
   const [selectedType, setSelectedType] = useState<'all' | 'expense' | 'income'>('all');
   const [selectedAsset, setSelectedAsset] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -79,6 +75,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [filterByMonth, setFilterByMonth] = useState(true);
   const [showQuickAddBar, setShowQuickAddBar] = useState(false);
+  const [viewMode, setViewMode] = useState<'detail' | 'simple'>('detail');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // Inline editing state
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
@@ -107,23 +105,41 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     return true;
   });
 
-  // Filter items for current group
+  // Filter items for current group (Member filter strictly controlled by navbar)
   const filtered = filterTransactions(baseTransactions, {
     groupId: currentGroup.id,
     searchQuery,
     categoryId: selectedCategory,
-    memberId: currentMemberFilter,
+    memberId: selectedMemberFilter || 'all',
     type: selectedType,
     assetId: selectedAsset,
     startDate,
     endDate,
   });
 
-  const grouped = groupTransactionsByDate(filtered);
+  const rawGrouped = groupTransactionsByDate(filtered);
+
+  // Group and sort by date according to sortOrder (desc vs asc)
+  const grouped = [...rawGrouped]
+    .sort((a, b) => {
+      return sortOrder === 'desc'
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date);
+    })
+    .map((grp) => ({
+      ...grp,
+      items: [...grp.items].sort((a, b) => {
+        return sortOrder === 'desc'
+          ? (b.time || '').localeCompare(a.time || '')
+          : (a.time || '').localeCompare(b.time || '');
+      }),
+    }));
 
   const catMap = new Map(categories.map((c) => [c.id, c]));
   const memMap = new Map((currentGroup.members || []).map((m) => [m.id, m]));
   const assetMap = new Map((currentGroup.assets || []).map((a) => [a.id, a]));
+
+  const activeNavbarMember = (currentGroup.members || []).find((m) => m.id === selectedMemberFilter);
 
   const handleExportCsv = () => {
     const csvString = generateCsvData(
@@ -144,7 +160,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedCategory('all');
-    setMemberFilter('all');
     setSelectedType('all');
     setSelectedAsset('all');
     setStartDate('');
@@ -154,7 +169,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const hasActiveFilters =
     searchQuery ||
     selectedCategory !== 'all' ||
-    currentMemberFilter !== 'all' ||
+    (selectedMemberFilter && selectedMemberFilter !== 'all') ||
     selectedType !== 'all' ||
     selectedAsset !== 'all' ||
     startDate ||
@@ -297,8 +312,49 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             )}
           </div>
 
-          {/* Month Scope Toggle Pill & Advanced Filters */}
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {/* Toolbar Controls: View Mode, Sort Order, Month Scope, Filter Toggle */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* View Mode Toggle: Detail vs Simple */}
+            <div className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('detail')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'detail'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Tampilan Detail"
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Detail</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('simple')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'simple'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Tampilan Simple & Clean"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Simple</span>
+              </button>
+            </div>
+
+            {/* Sort Order Toggle: Desc (Terbaru) vs Asc (Terlama) */}
+            <button
+              type="button"
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors cursor-pointer shrink-0"
+              title={`Urutkan tanggal: ${sortOrder === 'desc' ? 'Terbaru ke Terlama' : 'Terlama ke Terbaru'}`}
+            >
+              <ArrowDownUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}</span>
+            </button>
+
             <button
               onClick={() => setFilterByMonth(!filterByMonth)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
@@ -335,9 +391,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </div>
         </div>
 
-        {/* Filter Details Accordion */}
+        {/* Filter Details Accordion - Member filter handled globally by Navbar */}
         {showFilters && (
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Category Filter */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
@@ -376,36 +432,17 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               </select>
             </div>
 
-            {/* Member Filter */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Anggota Keluarga
-              </label>
-              <select
-                value={currentMemberFilter}
-                onChange={(e) => setMemberFilter(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
-              >
-                <option value="all">Semua Anggota</option>
-                {(currentGroup.members || []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Type Filter */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Tipe
+                Tipe Transaksi
               </label>
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value as any)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               >
-                <option value="all">Semua Tipe</option>
+                <option value="all">Semua Tipe (Masuk & Keluar)</option>
                 <option value="expense">Pengeluaran</option>
                 <option value="income">Pemasukan</option>
               </select>
@@ -414,10 +451,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         )}
 
         {/* Filter Summary Stats */}
-        <div className="flex flex-wrap items-center justify-between text-xs pt-1 border-t border-slate-50 dark:border-slate-800/40 text-slate-500 dark:text-slate-400">
-          <div>
-            Menampilkan <span className="font-bold text-slate-900 dark:text-white">{filtered.length}</span>{' '}
-            transaksi
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-slate-50 dark:border-slate-800/40 text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>
+              Menampilkan <span className="font-bold text-slate-900 dark:text-white">{filtered.length}</span>{' '}
+              transaksi
+            </span>
+            {activeNavbarMember && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: activeNavbarMember.avatarColor }}
+                />
+                <span>Navbar Filter: {activeNavbarMember.name}</span>
+              </span>
+            )}
+            {selectedMemberFilter === 'joint' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <span>Navbar Filter: Rekening Bersama</span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 font-mono text-[11px]">
             <span>
@@ -435,44 +488,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             </span>
           </div>
         </div>
-      </div>
-
-      {/* Quick Member Filter Badges */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-        <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1 flex-shrink-0">
-          Filter Anggota:
-        </span>
-        <button
-          onClick={() => setMemberFilter('all')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-            currentMemberFilter === 'all'
-              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-          }`}
-        >
-          Semua Anggota
-        </button>
-        {(currentGroup.members || []).map((m) => {
-          const isSelected = currentMemberFilter === m.id;
-          const mTheme = getMemberColorTheme(m.avatarColor);
-          return (
-            <button
-              key={m.id}
-              onClick={() => setMemberFilter(isSelected ? 'all' : m.id)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap border transition-all cursor-pointer ${
-                isSelected
-                  ? `${mTheme.badge} shadow-xs border-transparent`
-                  : `${mTheme.bgLight} ${mTheme.text} ${mTheme.borderLight} hover:scale-105`
-              }`}
-            >
-              <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: m.avatarColor }}
-              />
-              <span>{m.name}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* Transaction List Grouped by Date */}
@@ -512,7 +527,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm"
               >
                 {/* Date Header with Daily Sum */}
-                <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                <div className="px-4 sm:px-5 py-2.5 sm:py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
                     <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -547,7 +562,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           className="p-3.5 bg-emerald-50/40 dark:bg-emerald-950/40 border-l-4 border-l-emerald-500 space-y-2 animate-in fade-in"
                         >
                           <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                            <span>Edit Langsung Horizontal</span>
+                            <span>Edit Cepat Transaksi</span>
                             <span>{formatIndonesianDate(inlineDate)} · {tx.time} WIB</span>
                           </div>
                           <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:flex-nowrap items-stretch sm:items-center gap-2">
@@ -598,14 +613,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               />
                             </div>
 
-                            {/* Description Input */}
-                            <div className="col-span-2 sm:col-span-1 sm:min-w-[150px] sm:flex-1">
+                            {/* Description Input (Broad & Comfortable) */}
+                            <div className="col-span-2 sm:col-span-1 sm:min-w-[200px] sm:flex-1">
                               <input
                                 type="text"
                                 value={inlineDesc}
                                 onChange={(e) => setInlineDesc(e.target.value)}
-                                placeholder="Keterangan transaksi"
-                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                                placeholder="Keterangan lengkap transaksi"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm"
                               />
                             </div>
 
@@ -624,13 +639,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               </select>
                             </div>
 
-                            {/* Member Select: Positioned before Rekening so accounts filter automatically */}
+                            {/* Member Select */}
                             <div className="col-span-1 sm:min-w-[90px]">
                               <select
                                 value={inlineMemberId}
                                 onChange={(e) => handleInlineMemberChange(e.target.value)}
                                 className="w-full px-2 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
-                                title="Pilih Anggota Pemilik"
+                                title="Pilih Anggota"
                               >
                                 {(currentGroup.members || []).map((m) => (
                                   <option key={m.id} value={m.id}>
@@ -640,7 +655,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               </select>
                             </div>
 
-                            {/* Rekening Select: Filtered for Selected Member */}
+                            {/* Rekening Select */}
                             <div className="col-span-2 sm:col-span-1 sm:min-w-[130px]">
                               <select
                                 value={inlineAssetId}
@@ -682,6 +697,106 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                       );
                     }
 
+                    {/* OPTION A: SIMPLE & CLEAN VIEW */}
+                    if (viewMode === 'simple') {
+                      return (
+                        <div
+                          key={tx.id}
+                          className="px-3.5 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-3 hover:bg-slate-50/90 dark:hover:bg-slate-800/50 transition-colors group"
+                        >
+                          {/* Left: Dot, Time, Description, Category Tag */}
+                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs"
+                              style={{ backgroundColor: cat?.color || '#94a3b8' }}
+                              title={cat?.name || 'Kategori'}
+                            />
+                            <span className="text-[11px] font-mono text-slate-400 shrink-0 hidden xs:inline">
+                              {tx.time}
+                            </span>
+                            <div className="min-w-0 flex-1 flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                                {tx.description}
+                              </span>
+                              <span className="text-[10px] text-slate-400 hidden md:inline truncate">
+                                ({cat?.name || 'Lainnya'})
+                              </span>
+                              {tx.isTransfer && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 shrink-0">
+                                  Transfer
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Member & Asset subtle tag */}
+                            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                              <span
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: mem?.avatarColor || '#3b82f6' }}
+                              />
+                              <span className="font-medium text-slate-600 dark:text-slate-300">{mem?.name}</span>
+                              {linkedAsset && (
+                                <span className="text-slate-400 truncate max-w-[110px]">· {linkedAsset.name}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right: Nominal & Hover Actions */}
+                          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                            <span
+                              className={`text-xs sm:text-sm font-bold font-mono text-right ${
+                                isExpense
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-emerald-600 dark:text-emerald-400'
+                              }`}
+                            >
+                              {isExpense ? '-' : '+'}
+                              {formatRupiah(tx.amount)}
+                            </span>
+
+                            {/* Simple Quick Action Icons */}
+                            <div className="flex items-center gap-0.5 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                              {onDuplicateTransaction && (
+                                <button
+                                  onClick={() => onDuplicateTransaction(tx)}
+                                  className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded transition-colors cursor-pointer"
+                                  title="Duplikat Transaksi"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleStartInlineEdit(tx)}
+                                className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors cursor-pointer"
+                                title="Edit Cepat Horizontal"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => onEditTransaction(tx)}
+                                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                title="Edit Lengkap"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Yakin ingin menghapus catatan "${tx.description}"?`)) {
+                                    onDeleteTransaction(tx.id);
+                                  }
+                                }}
+                                className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer"
+                                title="Hapus Transaksi"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    {/* OPTION B: DETAIL RICH VIEW */}
                     return (
                       <div
                         key={tx.id}
@@ -691,7 +806,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         <div className="flex items-center gap-3 min-w-0">
                           {/* Category Icon Badge */}
                           <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white shadow-sm"
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white shadow-sm"
                             style={{ backgroundColor: cat?.color || '#94a3b8' }}
                           >
                             <CategoryIcon name={cat?.icon || 'Tag'} className="w-5 h-5" />
@@ -724,7 +839,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${memTheme.bgLight} ${memTheme.text} ${memTheme.borderLight}`}
                               >
                                 <span
-                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
                                   style={{ backgroundColor: mem?.avatarColor || '#2563eb' }}
                                 />
                                 <span>{mem?.name || 'Anggota'}</span>
@@ -738,7 +853,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                   <span aria-hidden="true">·</span>
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                     <span
-                                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                      className="w-1.5 h-1.5 rounded-full shrink-0"
                                       style={{ backgroundColor: linkedAsset.color || '#2563eb' }}
                                     />
                                     <span>{linkedAsset.name}</span>
@@ -750,7 +865,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         </div>
 
                         {/* Amount & Actions */}
-                        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+                        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                           <div className="text-right">
                             <div
                               className={`text-xs font-bold font-mono ${
