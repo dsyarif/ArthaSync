@@ -189,151 +189,155 @@ export const HorizontalQuickAddBar: React.FC<HorizontalQuickAddBarProps> = ({
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-2 sm:flex sm:flex-wrap lg:flex-nowrap items-stretch sm:items-center gap-2">
-        {/* Type Toggle */}
-        <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl col-span-1 flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => handleTypeToggle('expense')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              type === 'expense'
-                ? 'bg-red-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-            title="Pengeluaran (-)"
-          >
-            <TrendingDown className="w-3 h-3" />
-            <span>Keluar</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTypeToggle('income')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              type === 'income'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-            title="Pemasukan (+)"
-          >
-            <TrendingUp className="w-3 h-3" />
-            <span>Masuk</span>
-          </button>
-        </div>
-
-        {/* Date Picker Button: Easy and fast to click anywhere */}
-        <div className="relative flex items-center col-span-1 sm:min-w-[130px] sm:max-w-[155px] flex-shrink-0">
-          <button
-            type="button"
-            onClick={handleOpenDatePicker}
-            className="w-full flex items-center justify-center sm:justify-start gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 hover:border-emerald-500 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs group"
-            title="Klik untuk ubah tanggal transaksi"
-          >
-            <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors flex-shrink-0" />
-            <span className="truncate">{formatIndonesianDate(dateInput)}</span>
-          </button>
-          <input
-            ref={dateInputRef}
-            type="date"
-            value={dateInput}
-            onChange={(e) => setDateInput(e.target.value || new Date().toISOString().split('T')[0])}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden="true"
-          />
-        </div>
-
-        {/* Amount Input */}
-        <div className="relative col-span-1 sm:min-w-[130px] sm:max-w-[160px] sm:flex-initial">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs pointer-events-none">
-            Rp
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={amountInput}
-            onChange={handleAmountChange}
-            onKeyDown={handleKeyDown}
-            placeholder="0"
-            className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        {/* Category Select */}
-        <div className="col-span-1 sm:min-w-[120px] sm:max-w-[160px] flex-shrink-0">
-          <select
-            value={selectedCategory}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            {activeCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Description Input (Expanded Width) */}
-        <div className="col-span-2 sm:col-span-1 sm:min-w-[220px] sm:flex-1">
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              type === 'expense'
-                ? 'Keterangan lengkap (makan, rincian belanja, bensin...)'
-                : 'Keterangan lengkap (gaji, tpp, sppd, freelance...)'
-            }
-            className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-          />
-        </div>
-
-        {/* Member Select: Positioned BEFORE Rekening to filter accounts automatically */}
-        <div className="col-span-1 sm:min-w-[90px] sm:max-w-[130px] flex-shrink-0">
-          <select
-            value={selectedMember}
-            onChange={(e) => handleMemberChange(e.target.value)}
-            className="w-full px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            title="Pilih Anggota Pemilik Transaksi"
-          >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Asset / Rekening Select: Filtered for Selected Member */}
-        {eligibleAssets.length > 0 && (
-          <div className="col-span-1 sm:min-w-[130px] sm:max-w-[170px] flex-shrink-0">
-            <select
-              value={selectedAsset}
-              onChange={(e) => setAssetId(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              title="Rekening / Sumber Dana Sesuai Anggota"
+      <form onSubmit={handleSubmit} className="space-y-2.5">
+        {/* Row 1: Quick Parameters (Tipe, Tanggal, Nominal, Kategori, Anggota, Rekening) */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Type Toggle */}
+          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => handleTypeToggle('expense')}
+              className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                type === 'expense'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Pengeluaran (-)"
             >
-              {eligibleAssets.map((a) => {
-                const isJoint = !a.memberId || a.memberId === 'joint';
-                return (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({formatRupiah(a.balance, { compact: true })}){isJoint ? ' · Bersama' : ''}
-                  </option>
-                );
-              })}
+              <TrendingDown className="w-3 h-3" />
+              <span>Keluar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTypeToggle('income')}
+              className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                type === 'income'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Pemasukan (+)"
+            >
+              <TrendingUp className="w-3 h-3" />
+              <span>Masuk</span>
+            </button>
+          </div>
+
+          {/* Date Picker Button */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={handleOpenDatePicker}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 hover:border-emerald-500 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs group"
+              title="Klik untuk ubah tanggal transaksi"
+            >
+              <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors shrink-0" />
+              <span>{formatIndonesianDate(dateInput)}</span>
+            </button>
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={dateInput}
+              onChange={(e) => setDateInput(e.target.value || new Date().toISOString().split('T')[0])}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+          </div>
+
+          {/* Amount Input */}
+          <div className="relative w-36 sm:w-40 shrink-0">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs pointer-events-none">
+              Rp
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={amountInput}
+              onChange={handleAmountChange}
+              onKeyDown={handleKeyDown}
+              placeholder="0"
+              className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          {/* Category Select */}
+          <div className="shrink-0 min-w-[130px] max-w-[170px]">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              {activeCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </div>
-        )}
 
-        {/* Submit Quick Button */}
-        <button
-          type="submit"
-          className="col-span-2 sm:col-span-1 w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0 sm:ml-auto"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Simpan Langsung</span>
-        </button>
+          {/* Member Select */}
+          <div className="shrink-0 min-w-[110px] max-w-[140px]">
+            <select
+              value={selectedMember}
+              onChange={(e) => handleMemberChange(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              title="Pilih Anggota Pemilik Transaksi"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Asset / Rekening Select: Filtered for Selected Member */}
+          {eligibleAssets.length > 0 && (
+            <div className="shrink-0 min-w-[140px] max-w-[200px]">
+              <select
+                value={selectedAsset}
+                onChange={(e) => setAssetId(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                title="Rekening / Sumber Dana Sesuai Anggota"
+              >
+                {eligibleAssets.map((a) => {
+                  const isJoint = !a.memberId || a.memberId === 'joint';
+                  return (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({formatRupiah(a.balance, { compact: true })}){isJoint ? ' · Bersama' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Row 2: Description Input (Spacious & Full-Width) + Quick Submit Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-0.5">
+          <div className="flex-1 min-w-0">
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                type === 'expense'
+                  ? 'Keterangan lengkap transaksi (contoh: Makan siang di warteg, bensin pertalite, belanja bulanan...)'
+                  : 'Keterangan pemasukan (contoh: Gaji bulanan, TPP, bonus proyek freelance...)'
+              }
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="flex items-center justify-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Simpan Langsung</span>
+          </button>
+        </div>
       </form>
     </div>
   );

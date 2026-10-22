@@ -87,19 +87,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Filter transactions according to selectedMemberFilter for dashboard overview
   const filteredTransactionsForSummary = transactions.filter((t) => {
     if (t.isDeleted || t.groupId !== currentGroup.id) return false;
-    if (selectedMemberFilter === 'all') return true;
+    if (!selectedMemberFilter || selectedMemberFilter === 'all') return true;
     if (selectedMemberFilter === 'joint') {
       if (!t.assetId) return !t.memberId;
       const ast = assetMap.get(t.assetId);
       return !ast?.memberId || ast.memberId === 'joint';
     }
-    // Specific member
-    if (t.memberId === selectedMemberFilter) return true;
-    if (t.assetId) {
-      const ast = assetMap.get(t.assetId);
-      return ast?.memberId === selectedMemberFilter;
-    }
-    return false;
+    // Specific member: filter strictly by the member who recorded / owns the transaction
+    return t.memberId === selectedMemberFilter;
   });
 
   const stats = calculateMonthlyStats(
@@ -120,16 +115,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Compact: Display 5 recent transactions on Dashboard
   const recentTransactions = allRecentTransactions
     .filter((t) => {
-      if (selectedMemberFilter === 'all') return true;
+      if (!selectedMemberFilter || selectedMemberFilter === 'all') return true;
       if (selectedMemberFilter === 'joint') {
         if (!t.assetId) return !t.memberId;
         const ast = assetMap.get(t.assetId);
         return !ast?.memberId || ast.memberId === 'joint';
       }
-      return (
-        t.memberId === selectedMemberFilter ||
-        (t.assetId && assetMap.get(t.assetId)?.memberId === selectedMemberFilter)
-      );
+      return t.memberId === selectedMemberFilter;
     })
     .slice(0, 5);
 
