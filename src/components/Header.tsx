@@ -258,8 +258,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-14 px-3 sm:px-4 gap-2">
           {/* Brand */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center text-white shadow-xs">
-              <Wallet className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-xs shrink-0">
+              <img src="/favicon.svg" alt="ArthaSync Logo" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white">
               ArthaSync
