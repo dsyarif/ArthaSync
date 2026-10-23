@@ -62,10 +62,22 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
   selectedMemberFilter = 'all',
   onNavigateSettings,
 }) => {
+  const groupId = currentGroup?.id || 'default_group';
+  const groupName = currentGroup?.name || 'Grup Keuangan';
+
+  if (!currentGroup) {
+    return (
+      <div className="flex flex-col items-center justify-center p-16 text-slate-400 space-y-3">
+        <Bot className="w-10 h-10 animate-bounce text-indigo-500" />
+        <p className="text-sm font-semibold">Memuat data grup keuangan...</p>
+      </div>
+    );
+  }
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     // Load existing chat history if any
     try {
-      const saved = localStorage.getItem(`arthasync_ai_chat_${currentGroup.id}`);
+      const saved = localStorage.getItem(`arthasync_ai_chat_${groupId}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -87,9 +99,11 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
   // Save chat history per group
   useEffect(() => {
     try {
-      localStorage.setItem(`arthasync_ai_chat_${currentGroup.id}`, JSON.stringify(messages));
+      if (groupId) {
+        localStorage.setItem(`arthasync_ai_chat_${groupId}`, JSON.stringify(messages));
+      }
     } catch {}
-  }, [messages, currentGroup.id]);
+  }, [messages, groupId]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -215,7 +229,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
   const handleClearHistory = () => {
     if (window.confirm('Hapus seluruh riwayat percakapan analisa AI pada grup ini?')) {
       setMessages([]);
-      localStorage.removeItem(`arthasync_ai_chat_${currentGroup.id}`);
+      localStorage.removeItem(`arthasync_ai_chat_${groupId}`);
     }
   };
 
@@ -303,7 +317,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Analisis cerdas & rekomendasi finansial berdasarkan data pembukuan {financialContext.monthName} {selectedYear} · {currentGroup.name}
+              Analisis cerdas & rekomendasi finansial berdasarkan data pembukuan {financialContext.monthName} {selectedYear} · {groupName}
             </p>
           </div>
         </div>
@@ -406,7 +420,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
                 Halo! Saya ArthaSync AI Advisor
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
-                Saya telah mempelajari catatan pengeluaran, pemasukan, pos anggaran, dan saldo kas grup <b>{currentGroup.name}</b>. Pilih salah satu topik instan di atas atau ajukan pertanyaan spesifik tentang keuangan Anda di kolom bawah.
+                Saya telah mempelajari catatan pengeluaran, pemasukan, pos anggaran, dan saldo kas grup <b>{groupName}</b>. Pilih salah satu topik instan di atas atau ajukan pertanyaan spesifik tentang keuangan Anda di kolom bawah.
               </p>
             </div>
           ) : (
@@ -541,7 +555,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
       </div>
 
       {/* Helpful banner if API key is not yet configured */}
-      {!apiKey && onNavigateSettings && (
+      {!hasApiKey && onNavigateSettings && (
         <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-start gap-2.5">
             <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />

@@ -612,14 +612,14 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
   "date": string // Format YYYY-MM-DD
 }`;
 
-  // Multi-tier model cascade: 2.5-flash is ultra-fast (<1.5s), with 3.8-flash and 1.5-flash
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
+  // Prioritaskan Gemini 3.8 Flash, dengan cadangan ke model aktif (gemini-2.5-flash / gemini-3.5-flash)
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
 
   for (const model of modelsToTry) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 9000); // 9s timeout
 
       const response = await fetch(url, {
         method: 'POST',
@@ -637,7 +637,7 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn(`Gemini model ${model} error: ${response.status} ${response.statusText}. Trying next...`);
+        console.warn(`Gemini voice parser model ${model} error: ${response.status} ${response.statusText}. Trying next...`);
         continue;
       }
 

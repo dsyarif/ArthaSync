@@ -66,21 +66,29 @@ const INDONESIAN_MONTHS = [
  * Uses the exact same calculateMonthlyStats calculation as StatisticsView for 100% parity
  */
 export function buildFinancialContext(
-  transactions: Transaction[],
-  categories: Category[],
-  currentGroup: FamilyGroup,
-  debts: DebtRecord[],
-  year: number,
-  month: number,
+  transactions: Transaction[] = [],
+  categories: Category[] = [],
+  currentGroup?: FamilyGroup,
+  debts: DebtRecord[] = [],
+  year: number = new Date().getFullYear(),
+  month: number = new Date().getMonth() + 1,
   selectedMemberFilter: string = 'all'
 ): FinancialContext {
+  const safeGroup: FamilyGroup = currentGroup || {
+    id: 'default',
+    name: 'Grup Keuangan',
+    members: [],
+    assets: [],
+    createdAt: Date.now(),
+  };
+
   const isMemberFiltered = selectedMemberFilter && selectedMemberFilter !== 'all';
-  const activeMember = currentGroup.members?.find((m) => m.id === selectedMemberFilter);
+  const activeMember = safeGroup.members?.find((m) => m.id === selectedMemberFilter);
 
   // Filter transactions belonging to current group AND member filter from navbar (identical to StatisticsView)
-  const groupTransactions = transactions.filter((t) => {
+  const groupTransactions = (transactions || []).filter((t) => {
     if (t.isDeleted) return false;
-    if (t.groupId && currentGroup.id && t.groupId !== currentGroup.id) return false;
+    if (t.groupId && safeGroup.id && t.groupId !== safeGroup.id) return false;
     if (isMemberFiltered && t.memberId !== selectedMemberFilter) return false;
     return true;
   });
@@ -88,8 +96,8 @@ export function buildFinancialContext(
   // Calculate current month stats using central finance engine
   const stats = calculateMonthlyStats(
     groupTransactions,
-    categories,
-    currentGroup.members || [],
+    categories || [],
+    safeGroup.members || [],
     year,
     month
   );
@@ -99,43 +107,43 @@ export function buildFinancialContext(
   const prevYear = month === 1 ? year - 1 : year;
   const prevStats = calculateMonthlyStats(
     groupTransactions,
-    categories,
-    currentGroup.members || [],
+    categories || [],
+    safeGroup.members || [],
     prevYear,
     prevMonth
   );
 
-  const expenseDiff = stats.totalSpent - prevStats.totalSpent;
-  const expenseMoMPercent = prevStats.totalSpent > 0
+  const expenseDiff = (stats?.totalSpent || 0) - (prevStats?.totalSpent || 0);
+  const expenseMoMPercent = (prevStats?.totalSpent || 0) > 0
     ? Math.round((expenseDiff / prevStats.totalSpent) * 100)
     : 0;
 
-  const savingsRate = stats.totalIncome > 0
-    ? Math.round(((stats.totalIncome - stats.totalSpent) / stats.totalIncome) * 100)
+  const savingsRate = (stats?.totalIncome || 0) > 0
+    ? Math.round((((stats?.totalIncome || 0) - (stats?.totalSpent || 0)) / stats.totalIncome) * 100)
     : 0;
 
   // Categories breakdown directly from stats
-  const categoriesBreakdown = stats.categoryBreakdown.map((c) => ({
+  const categoriesBreakdown = (stats?.categoryBreakdown || []).map((c) => ({
     id: c.categoryId,
     name: c.categoryName,
-    spent: c.amount,
-    budget: c.budget,
-    percentageOfTotal: Math.round(c.percentage),
-    isOverBudget: c.budget > 0 && c.amount > c.budget,
+    spent: c.amount || 0,
+    budget: c.budget || 0,
+    percentageOfTotal: Math.round(c.percentage || 0),
+    isOverBudget: (c.budget || 0) > 0 && (c.amount || 0) > c.budget,
   }));
 
   // Members breakdown directly from stats
-  const membersBreakdown = stats.memberBreakdown.map((m) => ({
+  const membersBreakdown = (stats?.memberBreakdown || []).map((m) => ({
     id: m.memberId,
     name: m.memberName,
-    spent: m.amount,
-    percentage: Math.round(m.percentage),
+    spent: m.amount || 0,
+    percentage: Math.round(m.percentage || 0),
   }));
 
   // Eligible assets
   const eligibleAssets = isMemberFiltered
-    ? getEligibleAssetsForMember(currentGroup.assets || [], selectedMemberFilter)
-    : currentGroup.assets || [];
+    ? getEligibleAssetsForMember(safeGroup.assets || [], selectedMemberFilter)
+    : safeGroup.assets || [];
 
   const totalAssetsBalance = eligibleAssets.reduce((sum, a) => sum + (a.balance || 0), 0);
   const liquidBalance = eligibleAssets
@@ -143,60 +151,60 @@ export function buildFinancialContext(
     .reduce((sum, a) => sum + (a.balance || 0), 0);
 
   const assetsSummary = eligibleAssets.map((a) => ({
-    name: a.name,
-    type: a.type,
+    name: a.name || 'Aset',
+    type: a.type || 'kas',
     institution: a.institution || '',
     balance: a.balance || 0,
   }));
 
   // Debt summary
-  const activeDebts = debts.filter((d) => {
+  const activeDebts = (debts || []).filter((d) => {
     if (d.isDeleted || d.status === 'paid') return false;
-    if (d.groupId && currentGroup.id && d.groupId !== currentGroup.id) return false;
+    if (d.groupId && safeGroup.id && d.groupId !== safeGroup.id) return false;
     if (isMemberFiltered && d.memberId !== selectedMemberFilter) return false;
     return true;
   });
 
   const totalUtang = activeDebts
     .filter((d) => d.type === 'utang')
-    .reduce((sum, d) => sum + (d.amount - d.paidAmount), 0);
+    .reduce((sum, d) => sum + ((d.amount || 0) - (d.paidAmount || 0)), 0);
   const totalPiutang = activeDebts
     .filter((d) => d.type === 'piutang')
-    .reduce((sum, d) => sum + (d.amount - d.paidAmount), 0);
+    .reduce((sum, d) => sum + ((d.amount || 0) - (d.paidAmount || 0)), 0);
 
   // Recent 8 transactions in active month
-  const catNameMap = new Map(categories.map((c) => [c.id, c.name]));
+  const catNameMap = new Map((categories || []).map((c) => [c.id, c.name]));
   const targetPrefix = `${year}-${String(month).padStart(2, '0')}`;
   const recentTransactions = groupTransactions
-    .filter((t) => t.date.startsWith(targetPrefix))
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .filter((t) => t.date && t.date.startsWith(targetPrefix))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
     .slice(0, 8)
     .map((t) => ({
       date: t.date,
-      description: t.description,
-      amount: t.amount,
-      type: t.type,
+      description: t.description || 'Transaksi',
+      amount: t.amount || 0,
+      type: t.type || 'expense',
       category: catNameMap.get(t.categoryId) || 'Lain-lain',
     }));
 
   return {
-    groupName: currentGroup.name,
+    groupName: safeGroup.name || 'Grup Keuangan',
     year,
     month,
-    monthName: INDONESIAN_MONTHS[month - 1] || 'Bulan',
+    monthName: INDONESIAN_MONTHS[month - 1] || 'Bulan Ini',
     selectedMemberFilter,
     activeMemberName: activeMember ? activeMember.name : 'Semua Anggota',
-    totalIncome: stats.totalIncome,
-    totalExpense: stats.totalSpent,
-    netSavings: stats.netSavings,
+    totalIncome: stats?.totalIncome || 0,
+    totalExpense: stats?.totalSpent || 0,
+    netSavings: stats?.netSavings || 0,
     savingsRate,
-    avgDailyExpense: stats.averageDaily,
-    daysInMonth: stats.daysInMonth,
+    avgDailyExpense: stats?.averageDaily || 0,
+    daysInMonth: stats?.daysInMonth || 30,
     totalAssetsBalance,
     liquidBalance,
-    topExpenseCategoryName: stats.topExpenseCategory?.categoryName || 'Belum Ada',
-    topExpenseCategoryAmount: stats.topExpenseCategory?.amount || 0,
-    topExpenseCategoryPercent: stats.topExpenseCategory ? Math.round(stats.topExpenseCategory.percentage) : 0,
+    topExpenseCategoryName: stats?.topExpenseCategory?.categoryName || 'Belum Ada',
+    topExpenseCategoryAmount: stats?.topExpenseCategory?.amount || 0,
+    topExpenseCategoryPercent: stats?.topExpenseCategory ? Math.round(stats.topExpenseCategory.percentage || 0) : 0,
     expenseMoMPercent,
     expenseDiff,
     categoriesBreakdown,
@@ -356,14 +364,15 @@ Pertanyaan / Prompt Pengguna:
 
 Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
 
-  // Multi-tier model cascade: 2.5-flash is ultra-responsive (<1.5s), with 3.8-flash and 1.5-flash
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
+  // Prioritaskan Gemini 3.8 Flash sesuai permintaan pengguna, dengan fallback cerdas ke model aktif
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+  let lastErrorMessage = '';
 
   for (const model of modelsToTry) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000); // 9s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
 
       const response = await fetch(url, {
         method: 'POST',
@@ -375,7 +384,7 @@ Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
             },
           ],
           generationConfig: {
-            temperature: 0.3,
+            temperature: 0.2,
           },
         }),
         signal: controller.signal,
@@ -384,7 +393,9 @@ Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn(`Gemini advisor model ${model} failed with status ${response.status}. Trying next...`);
+        const errorText = await response.text().catch(() => '');
+        console.warn(`Gemini advisor model ${model} returned status ${response.status}: ${errorText.slice(0, 150)}`);
+        lastErrorMessage = `Model ${model} (${response.status})`;
         continue;
       }
 
@@ -402,13 +413,19 @@ Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
       };
     } catch (err: any) {
       console.warn(`Gemini attempt with ${model} failed:`, err?.message || err);
+      lastErrorMessage = err?.message || 'Koneksi timeout';
       continue;
     }
   }
 
-  // Graceful fallback to local advisor
+  // Graceful fallback to local advisor with clear explanation
+  const localAnswer = generateLocalAdvisorResponse(question, context);
+  const footnote = lastErrorMessage
+    ? `\n\n*(Catatan: Server online Gemini 3.8 Flash sedang mengalami lonjakan antrean/503 atau timeout [${lastErrorMessage}]. Hasil analisa di atas disajikan oleh ArthaSync Smart Local AI secara akurat dari data statistik).*`
+    : '';
+
   return {
-    answer: generateLocalAdvisorResponse(question, context),
+    answer: localAnswer + footnote,
     source: 'local_nlp',
   };
 }
