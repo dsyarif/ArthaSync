@@ -28,6 +28,7 @@ import {
   ParsedTransactionResult,
   parseTransactionWithGemini,
   parseTransactionWithLocalNLP,
+  getEffectiveGeminiApiKey,
 } from '../services/aiParser';
 import { formatRupiah, getEligibleAssetsForMember, parseRupiahInput } from '../utils/finance';
 
@@ -193,7 +194,7 @@ export const VoiceAiModal: React.FC<VoiceAiModalProps> = ({
     setErrorMessage('');
 
     try {
-      const apiKey = localStorage.getItem('arthasync_gemini_api_key') || '';
+      const apiKey = getEffectiveGeminiApiKey();
       let result: ParsedTransactionResult;
 
       if (apiKey.trim()) {
@@ -319,7 +320,7 @@ export const VoiceAiModal: React.FC<VoiceAiModalProps> = ({
   // If modal is not open, do not render
   if (!isOpen) return null;
 
-  const hasApiKey = Boolean(localStorage.getItem('arthasync_gemini_api_key'));
+  const hasApiKey = Boolean(getEffectiveGeminiApiKey());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">

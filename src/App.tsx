@@ -524,6 +524,7 @@ export default function App() {
             debts={debts}
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
+            selectedMemberFilter={selectedMemberFilter}
             onNavigateSettings={() => setActiveTab('settings')}
           />
         )}

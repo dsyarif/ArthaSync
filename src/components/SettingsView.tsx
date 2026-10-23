@@ -38,7 +38,7 @@ import { NotificationService } from '../services/notification';
 import { StorageService } from '../services/storage';
 import { generateCsvData } from '../utils/finance';
 import { SUPABASE_URL, isSupabaseConfigured } from '../services/supabase';
-import { testGeminiConnection } from '../services/aiParser';
+import { testGeminiConnection, getEffectiveGeminiApiKey } from '../services/aiParser';
 
 interface SettingsViewProps {
   darkMode: boolean;
@@ -78,7 +78,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [biometricFeedback, setBiometricFeedback] = useState('');
 
   // Google Gemini AI Settings
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('arthasync_gemini_api_key') || '');
+  const [geminiApiKey, setGeminiApiKey] = useState(() => getEffectiveGeminiApiKey());
   const [showKey, setShowKey] = useState(false);
   const [isTestingAi, setIsTestingAi] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);

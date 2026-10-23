@@ -1,18 +1,27 @@
 import { AssetAccount, Category, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
-import { formatRupiah } from '../utils/finance';
+import { calculateMonthlyStats, formatRupiah, getEligibleAssetsForMember } from '../utils/finance';
+import { getEffectiveGeminiApiKey } from './aiParser';
 
 export interface FinancialContext {
   groupName: string;
   year: number;
   month: number;
   monthName: string;
+  selectedMemberFilter?: string;
+  activeMemberName?: string;
   totalIncome: number;
   totalExpense: number;
   netSavings: number;
-  savingsRate: number; // percentage (e.g. 25.5)
+  savingsRate: number; // percentage (e.g. 25)
   avgDailyExpense: number;
+  daysInMonth: number;
   totalAssetsBalance: number;
   liquidBalance: number;
+  topExpenseCategoryName: string;
+  topExpenseCategoryAmount: number;
+  topExpenseCategoryPercent: number;
+  expenseMoMPercent: number;
+  expenseDiff: number;
   categoriesBreakdown: {
     id: string;
     name: string;
@@ -54,6 +63,7 @@ const INDONESIAN_MONTHS = [
 
 /**
  * Build rich financial context from current dataset
+ * Uses the exact same calculateMonthlyStats calculation as StatisticsView for 100% parity
  */
 export function buildFinancialContext(
   transactions: Transaction[],
@@ -61,81 +71,78 @@ export function buildFinancialContext(
   currentGroup: FamilyGroup,
   debts: DebtRecord[],
   year: number,
-  month: number
+  month: number,
+  selectedMemberFilter: string = 'all'
 ): FinancialContext {
-  const activeMonthTransactions = transactions.filter((t) => {
+  const isMemberFiltered = selectedMemberFilter && selectedMemberFilter !== 'all';
+  const activeMember = currentGroup.members?.find((m) => m.id === selectedMemberFilter);
+
+  // Filter transactions belonging to current group AND member filter from navbar (identical to StatisticsView)
+  const groupTransactions = transactions.filter((t) => {
     if (t.isDeleted) return false;
-    const [y, m] = t.date.split('-').map(Number);
-    return y === year && m === month;
+    if (t.groupId && currentGroup.id && t.groupId !== currentGroup.id) return false;
+    if (isMemberFiltered && t.memberId !== selectedMemberFilter) return false;
+    return true;
   });
 
-  const totalIncome = activeMonthTransactions
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Calculate current month stats using central finance engine
+  const stats = calculateMonthlyStats(
+    groupTransactions,
+    categories,
+    currentGroup.members || [],
+    year,
+    month
+  );
 
-  const totalExpense = activeMonthTransactions
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Calculate previous month stats for MoM comparison
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const prevStats = calculateMonthlyStats(
+    groupTransactions,
+    categories,
+    currentGroup.members || [],
+    prevYear,
+    prevMonth
+  );
 
-  const netSavings = totalIncome - totalExpense;
-  const savingsRate = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
+  const expenseDiff = stats.totalSpent - prevStats.totalSpent;
+  const expenseMoMPercent = prevStats.totalSpent > 0
+    ? Math.round((expenseDiff / prevStats.totalSpent) * 100)
+    : 0;
 
-  // Days in month
-  const now = new Date();
-  const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
-  const daysPassed = isCurrentMonth ? Math.max(1, now.getDate()) : 30;
-  const avgDailyExpense = Math.round(totalExpense / daysPassed);
+  const savingsRate = stats.totalIncome > 0
+    ? Math.round(((stats.totalIncome - stats.totalSpent) / stats.totalIncome) * 100)
+    : 0;
 
-  // Categories breakdown
-  const catMap = new Map<string, number>();
-  activeMonthTransactions
-    .filter((t) => t.type === 'expense')
-    .forEach((t) => {
-      catMap.set(t.categoryId, (catMap.get(t.categoryId) || 0) + t.amount);
-    });
+  // Categories breakdown directly from stats
+  const categoriesBreakdown = stats.categoryBreakdown.map((c) => ({
+    id: c.categoryId,
+    name: c.categoryName,
+    spent: c.amount,
+    budget: c.budget,
+    percentageOfTotal: Math.round(c.percentage),
+    isOverBudget: c.budget > 0 && c.amount > c.budget,
+  }));
 
-  const categoriesBreakdown = categories
-    .filter((c) => c.type !== 'income')
-    .map((c) => {
-      const spent = catMap.get(c.id) || 0;
-      const budget = c.monthlyBudget || 0;
-      return {
-        id: c.id,
-        name: c.name,
-        spent,
-        budget,
-        percentageOfTotal: totalExpense > 0 ? Math.round((spent / totalExpense) * 100) : 0,
-        isOverBudget: budget > 0 && spent > budget,
-      };
-    })
-    .sort((a, b) => b.spent - a.spent);
+  // Members breakdown directly from stats
+  const membersBreakdown = stats.memberBreakdown.map((m) => ({
+    id: m.memberId,
+    name: m.memberName,
+    spent: m.amount,
+    percentage: Math.round(m.percentage),
+  }));
 
-  // Members breakdown
-  const memMap = new Map<string, number>();
-  activeMonthTransactions
-    .filter((t) => t.type === 'expense')
-    .forEach((t) => {
-      memMap.set(t.memberId, (memMap.get(t.memberId) || 0) + t.amount);
-    });
+  // Eligible assets
+  const eligibleAssets = isMemberFiltered
+    ? getEligibleAssetsForMember(currentGroup.assets || [], selectedMemberFilter)
+    : currentGroup.assets || [];
 
-  const membersBreakdown = (currentGroup.members || []).map((m) => {
-    const spent = memMap.get(m.id) || 0;
-    return {
-      id: m.id,
-      name: m.name,
-      spent,
-      percentage: totalExpense > 0 ? Math.round((spent / totalExpense) * 100) : 0,
-    };
-  }).sort((a, b) => b.spent - a.spent);
-
-  // Assets summary
-  const assets = currentGroup.assets || [];
-  const totalAssetsBalance = assets.reduce((sum, a) => sum + (a.balance || 0), 0);
-  const liquidBalance = assets
+  const totalAssetsBalance = eligibleAssets.reduce((sum, a) => sum + (a.balance || 0), 0);
+  const liquidBalance = eligibleAssets
     .filter((a) => a.type === 'kas' || a.type === 'bank' || a.type === 'ewallet')
     .reduce((sum, a) => sum + (a.balance || 0), 0);
 
-  const assetsSummary = assets.map((a) => ({
+  const assetsSummary = eligibleAssets.map((a) => ({
     name: a.name,
     type: a.type,
     institution: a.institution || '',
@@ -143,7 +150,13 @@ export function buildFinancialContext(
   }));
 
   // Debt summary
-  const activeDebts = debts.filter((d) => !d.isDeleted && d.status !== 'paid');
+  const activeDebts = debts.filter((d) => {
+    if (d.isDeleted || d.status === 'paid') return false;
+    if (d.groupId && currentGroup.id && d.groupId !== currentGroup.id) return false;
+    if (isMemberFiltered && d.memberId !== selectedMemberFilter) return false;
+    return true;
+  });
+
   const totalUtang = activeDebts
     .filter((d) => d.type === 'utang')
     .reduce((sum, d) => sum + (d.amount - d.paidAmount), 0);
@@ -151,9 +164,11 @@ export function buildFinancialContext(
     .filter((d) => d.type === 'piutang')
     .reduce((sum, d) => sum + (d.amount - d.paidAmount), 0);
 
-  // Recent 8 transactions
+  // Recent 8 transactions in active month
   const catNameMap = new Map(categories.map((c) => [c.id, c.name]));
-  const recentTransactions = [...activeMonthTransactions]
+  const targetPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const recentTransactions = groupTransactions
+    .filter((t) => t.date.startsWith(targetPrefix))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8)
     .map((t) => ({
@@ -169,13 +184,21 @@ export function buildFinancialContext(
     year,
     month,
     monthName: INDONESIAN_MONTHS[month - 1] || 'Bulan',
-    totalIncome,
-    totalExpense,
-    netSavings,
+    selectedMemberFilter,
+    activeMemberName: activeMember ? activeMember.name : 'Semua Anggota',
+    totalIncome: stats.totalIncome,
+    totalExpense: stats.totalSpent,
+    netSavings: stats.netSavings,
     savingsRate,
-    avgDailyExpense,
+    avgDailyExpense: stats.averageDaily,
+    daysInMonth: stats.daysInMonth,
     totalAssetsBalance,
     liquidBalance,
+    topExpenseCategoryName: stats.topExpenseCategory?.categoryName || 'Belum Ada',
+    topExpenseCategoryAmount: stats.topExpenseCategory?.amount || 0,
+    topExpenseCategoryPercent: stats.topExpenseCategory ? Math.round(stats.topExpenseCategory.percentage) : 0,
+    expenseMoMPercent,
+    expenseDiff,
     categoriesBreakdown,
     membersBreakdown,
     assetsSummary,
@@ -209,10 +232,10 @@ export function generateLocalAdvisorResponse(
     const isHigh = percent > 35;
     return `### 🍔 Analisa Pengeluaran Makanan & Minuman (${ctx.monthName} ${ctx.year})
 - **Total Pengeluaran Makan**: **${formatRupiah(foodCat.spent)}** (${percent}% dari seluruh pengeluaran)
-- **Rata-rata Harian**: Sekitar **${formatRupiah(Math.round(foodCat.spent / 30))}** / hari.
+- **Rata-rata Harian**: Sekitar **${formatRupiah(Math.round(foodCat.spent / ctx.daysInMonth))}** / hari.
 ${foodCat.budget > 0 ? `- **Batas Anggaran**: ${formatRupiah(foodCat.budget)} (${foodCat.spent > foodCat.budget ? '⚠️ **Melebihi anggaran!**' : '✅ Masih dalam batas aman'})` : '- *Belum ada limit anggaran khusus untuk pos ini.*'}
 
-**Rekomendasi AI**:
+**Rekomendasi Finansial**:
 ${isHigh
   ? 'Pos makan memakan lebih dari 35% total pengeluaran Anda. Pertimbangkan untuk memasak di rumah pada hari kerja dan membatasi pemesanan ojol/cafe di akhir pekan untuk menghemat hingga 20-30%.'
   : 'Pengeluaran makanan Anda terkontrol dengan baik di bawah batas wajar (kurang dari 35%). Pertahankan disiplin konsumsi ini!'}`;
@@ -221,7 +244,7 @@ ${isHigh
   // 2. Anggota Keluarga / Siapa Paling Boros
   if (q.includes('anggota') || q.includes('siapa') || q.includes('boros') || q.includes('keluarga')) {
     if (ctx.membersBreakdown.length === 0) {
-      return `Belum ada data anggota keluarga terdaftar pada grup **${ctx.groupName}**.`;
+      return `Belum ada data transaksi per anggota terdaftar pada filter ini di grup **${ctx.groupName}**.`;
     }
     const topSpender = ctx.membersBreakdown[0];
     const breakdownList = ctx.membersBreakdown
@@ -231,7 +254,7 @@ ${isHigh
     return `### 👥 Perbandingan Pengeluaran per Anggota (${ctx.monthName} ${ctx.year})
 ${breakdownList}
 
-- **Pengeluaran Terbesar**: Tercatat atas nama **${topSpender.name}** sebesar **${formatRupiah(topSpender.spent)}** (${topSpender.percentage}% dari total).
+- **Pengeluaran Terbesar**: Tercatat atas nama **${topSpender.name}** sebesar **${formatRupiah(topSpender.spent)}** (${topSpender.percentage}% dari total pengeluaran).
 
 **Catatan AI**:
 Pastikan pengeluaran yang tercatat merupakan kebutuhan bersama keluarga yang telah disepakati atau alokasi pribadi yang sesuai dengan pembagian pos anggaran.`;
@@ -282,7 +305,7 @@ ${overBudgetCats.length > 0 ? `#### ⚠️ Pos yang Melebihi Anggaran:\n${overBu
 - **Total Pengeluaran**: **${formatRupiah(ctx.totalExpense)}**
 - **Selisih / Tabungan Bersih**: **${formatRupiah(ctx.netSavings)}** (${ctx.netSavings >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})
 - **Tingkat Tabungan (Savings Rate)**: **${ctx.savingsRate}%**
-- **Rata-rata Pengeluaran Harian**: **${formatRupiah(ctx.avgDailyExpense)}** / hari
+- **Rata-rata Pengeluaran Harian**: **${formatRupiah(ctx.avgDailyExpense)}** / hari (${ctx.daysInMonth} hari periode)
 - **Saldo Kas & Bank Likuid**: **${formatRupiah(ctx.liquidBalance)}**
 ${topCat ? `- **Pengeluaran Terbesar**: Kategori **${topCat.name}** sebesar **${formatRupiah(topCat.spent)}** (${topCat.percentageOfTotal}%)` : ''}
 
@@ -293,17 +316,17 @@ ${ctx.netSavings >= 0
 }
 
 /**
- * Ask Financial AI (Gemini 3.8 Flash with fallback to Local Advisor)
+ * Ask Financial AI (Gemini 2.5 Flash / 3.8 Flash with fallback to Local Advisor)
  */
 export async function askFinancialAi(
   question: string,
   context: FinancialContext,
   apiKey?: string
-): Promise<{ answer: string; source: 'gemini' | 'local_nlp' }> {
-  const cleanKey = apiKey ? apiKey.trim() : '';
+): Promise<{ answer: string; source: 'gemini' | 'local_nlp'; modelUsed?: string }> {
+  const effectiveKey = (apiKey || getEffectiveGeminiApiKey()).trim();
 
   // If no API Key or offline, use smart local advisor
-  if (!cleanKey || !navigator.onLine) {
+  if (!effectiveKey || !navigator.onLine) {
     return {
       answer: generateLocalAdvisorResponse(question, context),
       source: 'local_nlp',
@@ -311,17 +334,18 @@ export async function askFinancialAi(
   }
 
   const systemInstruction = `Anda adalah "ArthaSync AI Advisor", seorang Certified Financial Planner (CFP) profesional dan penasihat keuangan pribadi keluarga.
-Tugas Anda adalah menganalisis data keuangan riil pengguna, menjawab pertanyaan pengguna secara komprehensif, tajam, ramah, dan solutif.
+Tugas Anda adalah menganalisis data keuangan riil pengguna yang telah terverifikasi sinkron dengan menu statistik, menjawab pertanyaan pengguna secara komprehensif, tajam, ramah, dan solutif.
 
 PANDUAN FORMAT JAWABAN:
 1. Gunakan bahasa Indonesia yang bersahabat, profesional, dan mudah dipahami.
 2. Gunakan markdown: Heading (###, ####), bullet points (-), dan tabel jika diperlukan.
 3. Format setiap nominal rupiah dengan format standar Indonesia (contoh: **Rp 1.500.000**).
-4. Berikan insight kritis, soroti pos yang boros atau membahayakan, dan berikan langkah aksi nyata (actionable advice).
-5. Fokus menjawab apa yang ditanyakan pengguna secara presisi dengan data yang disediakan.`;
+4. Angka-angka total pengeluaran, pemasukan, dan rata-rata harus konsisten dengan data ringkasan yang diberikan.
+5. Berikan insight kritis, soroti pos yang boros atau membahayakan, dan berikan langkah aksi nyata (actionable advice).
+6. Fokus menjawab apa yang ditanyakan pengguna secara presisi dengan data yang disediakan.`;
 
   const contextJson = JSON.stringify(context, null, 2);
-  const prompt = `Berikut adalah data keuangan riil pengguna untuk periode ${context.monthName} ${context.year} pada grup "${context.groupName}":
+  const prompt = `Berikut adalah data keuangan riil pengguna untuk periode ${context.monthName} ${context.year} pada grup "${context.groupName}" (Filter: ${context.activeMemberName}):
 
 \`\`\`json
 ${contextJson}
@@ -332,58 +356,59 @@ Pertanyaan / Prompt Pengguna:
 
 Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${cleanKey}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+  // Multi-tier model cascade: 2.5-flash is ultra-responsive (<1.5s), with 3.8-flash and 1.5-flash
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: `${systemInstruction}\n\n${prompt}` }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.3,
-        }
-      }),
-      signal: controller.signal,
-    });
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 9000); // 9s timeout
 
-    clearTimeout(timeoutId);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: `${systemInstruction}\n\n${prompt}` }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.3,
+          },
+        }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      console.warn(`Gemini advisor failed with status ${response.status}. Using local advisor.`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(`Gemini advisor model ${model} failed with status ${response.status}. Trying next...`);
+        continue;
+      }
+
+      const data = await response.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!reply) {
+        continue;
+      }
+
       return {
-        answer: generateLocalAdvisorResponse(question, context),
-        source: 'local_nlp',
+        answer: reply,
+        source: 'gemini',
+        modelUsed: model,
       };
+    } catch (err: any) {
+      console.warn(`Gemini attempt with ${model} failed:`, err?.message || err);
+      continue;
     }
-
-    const data = await response.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!reply) {
-      return {
-        answer: generateLocalAdvisorResponse(question, context),
-        source: 'local_nlp',
-      };
-    }
-
-    return {
-      answer: reply,
-      source: 'gemini',
-    };
-  } catch (err) {
-    console.warn('Gemini advisor error, fallback to local:', err);
-    return {
-      answer: generateLocalAdvisorResponse(question, context),
-      source: 'local_nlp',
-    };
   }
+
+  // Graceful fallback to local advisor
+  return {
+    answer: generateLocalAdvisorResponse(question, context),
+    source: 'local_nlp',
+  };
 }

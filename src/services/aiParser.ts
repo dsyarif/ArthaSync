@@ -547,6 +547,21 @@ export function parseTransactionWithLocalNLP(
 }
 
 /**
+ * Retrieve effective Gemini API Key from localStorage or environment variables
+ */
+export function getEffectiveGeminiApiKey(): string {
+  if (typeof window !== 'undefined') {
+    const fromStorage = localStorage.getItem('arthasync_gemini_api_key');
+    if (fromStorage && fromStorage.trim()) return fromStorage.trim();
+  }
+  return (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+    ''
+  ).trim();
+}
+
+/**
  * Google Gemini AI Parser with fallback to Local NLP
  */
 export async function parseTransactionWithGemini(
@@ -558,9 +573,10 @@ export async function parseTransactionWithGemini(
   defaultMemberId?: string
 ): Promise<ParsedTransactionResult> {
   const cleanInput = input.trim();
+  const effectiveKey = apiKey || getEffectiveGeminiApiKey();
 
   // If no API Key or offline, immediately use Local NLP
-  if (!apiKey || !navigator.onLine) {
+  if (!effectiveKey || !navigator.onLine) {
     return parseTransactionWithLocalNLP(cleanInput, categories, assets, members, defaultMemberId);
   }
 
@@ -596,107 +612,123 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
   "date": string // Format YYYY-MM-DD
 }`;
 
-  try {
-    // Primary model: gemini-3.8-flash -> fallback to local NLP
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
+  // Multi-tier model cascade: 2.5-flash is ultra-fast (<1.5s), with 3.8-flash and 1.5-flash
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
           },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json',
-        },
-      }),
-      signal: controller.signal,
-    });
+        }),
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      console.warn(`Gemini API error: ${response.status} ${response.statusText}. Falling back to Local NLP.`);
-      return parseTransactionWithLocalNLP(cleanInput, categories, assets, members, defaultMemberId);
+      if (!response.ok) {
+        console.warn(`Gemini model ${model} error: ${response.status} ${response.statusText}. Trying next...`);
+        continue;
+      }
+
+      const data = await response.json();
+      const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!candidateText) {
+        continue;
+      }
+
+      // Clean JSON markdown if wrapped
+      const cleanedJsonStr = candidateText.replace(/^```json/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(cleanedJsonStr);
+
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // Verify category exists
+      const validCategory = categories.find((c) => c.id === parsed.categoryId) || categories[0];
+      const validAsset = assets.find((a) => a.id === parsed.assetId) || assets[0];
+      const validMemberId = members.find((m) => m.id === parsed.memberId)?.id || defaultMemberId || members[0]?.id || '';
+
+      return {
+        amount: typeof parsed.amount === 'number' ? parsed.amount : parseInt(parsed.amount, 10) || 0,
+        type: parsed.type === 'income' ? 'income' : 'expense',
+        categoryId: validCategory?.id || parsed.categoryId || '',
+        categoryName: validCategory?.name || parsed.categoryName || 'Lain-lain',
+        assetId: validAsset?.id,
+        assetName: validAsset?.name,
+        paymentMethod: parsed.paymentMethod || (validAsset?.type === 'bank' ? 'transfer_bank' : 'tunai'),
+        memberId: validMemberId,
+        description: parsed.description || cleanInput,
+        date: parsed.date || now.toISOString().split('T')[0],
+        time,
+        confidence: 0.95,
+        source: 'gemini',
+        rawInput: cleanInput,
+      };
+    } catch (modelErr) {
+      console.warn(`Gemini attempt with ${model} failed:`, modelErr);
+      continue;
     }
-
-    const data = await response.json();
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!candidateText) {
-      return parseTransactionWithLocalNLP(cleanInput, categories, assets, members, defaultMemberId);
-    }
-
-    // Clean JSON markdown if wrapped
-    const cleanedJsonStr = candidateText.replace(/^```json/i, '').replace(/```$/i, '').trim();
-    const parsed = JSON.parse(cleanedJsonStr);
-
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    // Verify category exists
-    const validCategory = categories.find((c) => c.id === parsed.categoryId) || categories[0];
-    const validAsset = assets.find((a) => a.id === parsed.assetId) || assets[0];
-    const validMemberId = members.find((m) => m.id === parsed.memberId)?.id || defaultMemberId || members[0]?.id || '';
-
-    return {
-      amount: typeof parsed.amount === 'number' ? parsed.amount : parseInt(parsed.amount, 10) || 0,
-      type: parsed.type === 'income' ? 'income' : 'expense',
-      categoryId: validCategory?.id || parsed.categoryId || '',
-      categoryName: validCategory?.name || parsed.categoryName || 'Lain-lain',
-      assetId: validAsset?.id,
-      assetName: validAsset?.name,
-      paymentMethod: parsed.paymentMethod || (validAsset?.type === 'bank' ? 'transfer_bank' : 'tunai'),
-      memberId: validMemberId,
-      description: parsed.description || cleanInput,
-      date: parsed.date || now.toISOString().split('T')[0],
-      time,
-      confidence: 0.95,
-      source: 'gemini',
-      rawInput: cleanInput,
-    };
-  } catch (error) {
-    console.warn('Gemini request failed, fallback to Local NLP:', error);
-    return parseTransactionWithLocalNLP(cleanInput, categories, assets, members, defaultMemberId);
   }
+
+  // Graceful fallback to Local NLP if all cloud calls fail
+  return parseTransactionWithLocalNLP(cleanInput, categories, assets, members, defaultMemberId);
 }
 
 /**
  * Test Gemini API connection
  */
 export async function testGeminiConnection(apiKey: string): Promise<{ success: boolean; message: string }> {
-  if (!apiKey.trim()) {
+  const effectiveKey = (apiKey || getEffectiveGeminiApiKey()).trim();
+  if (!effectiveKey) {
     return { success: false, message: 'API Key tidak boleh kosong.' };
   }
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Balas dengan satu kata: "OK"' }] }],
-        generationConfig: { maxOutputTokens: 5 },
-      }),
-    });
+  const models = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
+  let lastErrMsg = '';
 
-    if (response.ok) {
-      return { success: true, message: 'Koneksi ke Google Gemini AI berhasil! Model aktif & siap digunakan.' };
-    } else {
-      const errData = await response.json().catch(() => ({}));
-      const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-      return { success: false, message: `Gagal terhubung: ${errMsg}` };
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Balas dengan satu kata: "OK"' }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return {
+          success: true,
+          message: `Koneksi ke Google Gemini AI berhasil (${model})! Model aktif & siap digunakan.`,
+        };
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        lastErrMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
+      }
+    } catch (err: any) {
+      lastErrMsg = err.message || 'Koneksi internet bermasalah / timeout';
     }
-  } catch (err: any) {
-    return { success: false, message: `Gagal terhubung: ${err.message || 'Koneksi internet bermasalah'}` };
   }
+
+  return { success: false, message: `Gagal terhubung: ${lastErrMsg}` };
 }

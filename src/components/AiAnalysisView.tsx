@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AssetAccount, Category, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
 import { buildFinancialContext, askFinancialAi, FinancialContext } from '../services/aiAdvisor';
+import { getEffectiveGeminiApiKey } from '../services/aiParser';
 import { formatRupiah } from '../utils/finance';
 
 interface AiAnalysisViewProps {
@@ -29,6 +30,7 @@ interface AiAnalysisViewProps {
   debts?: DebtRecord[];
   selectedYear: number;
   selectedMonth: number;
+  selectedMemberFilter?: string;
   onNavigateSettings?: () => void;
 }
 
@@ -37,6 +39,7 @@ interface ChatMessage {
   sender: 'user' | 'ai';
   text: string;
   source?: 'gemini' | 'local_nlp';
+  modelUsed?: string;
   timestamp: string;
 }
 
@@ -56,6 +59,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
   debts = [],
   selectedYear,
   selectedMonth,
+  selectedMemberFilter = 'all',
   onNavigateSettings,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -76,8 +80,9 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Gemini API Key from localStorage
-  const apiKey = typeof window !== 'undefined' ? localStorage.getItem('arthasync_gemini_api_key') || '' : '';
+  // Gemini API Key from localStorage or environment (.env)
+  const effectiveApiKey = getEffectiveGeminiApiKey();
+  const hasApiKey = Boolean(effectiveApiKey);
 
   // Save chat history per group
   useEffect(() => {
@@ -91,7 +96,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Build financial context
+  // Build financial context with full parity with StatisticsView
   const financialContext: FinancialContext = useMemo(() => {
     return buildFinancialContext(
       transactions,
@@ -99,9 +104,10 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
       currentGroup,
       debts,
       selectedYear,
-      selectedMonth
+      selectedMonth,
+      selectedMemberFilter
     );
-  }, [transactions, categories, currentGroup, debts, selectedYear, selectedMonth]);
+  }, [transactions, categories, currentGroup, debts, selectedYear, selectedMonth, selectedMemberFilter]);
 
   // Voice Recognition for prompts
   useEffect(() => {
@@ -176,12 +182,13 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await askFinancialAi(q, financialContext, apiKey);
+      const response = await askFinancialAi(q, financialContext, effectiveApiKey);
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
         text: response.answer,
         source: response.source,
+        modelUsed: response.modelUsed,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, aiMsg]);
@@ -282,13 +289,18 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
             <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg font-bold text-slate-900 dark:text-white">
                 Analisa Keuangan AI
               </h1>
               <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                {apiKey ? '✨ Gemini 3.8 Flash' : '⚡ Smart Local AI'}
+                {hasApiKey ? '✨ Gemini AI' : '⚡ Smart Local AI'}
               </span>
+              {selectedMemberFilter && selectedMemberFilter !== 'all' && (
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  Filter: {financialContext.activeMemberName}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Analisis cerdas & rekomendasi finansial berdasarkan data pembukuan {financialContext.monthName} {selectedYear} · {currentGroup.name}
@@ -307,54 +319,57 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
         )}
       </div>
 
-      {/* Snapshot Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-            Kondisi Arus Kas
+      {/* Summary KPI Cards - 100% Paritas dengan Menu Statistik */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Card 1: Total Pengeluaran */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+            Total Pengeluaran
           </span>
-          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-            {formatRupiah(financialContext.netSavings)}
+          <div className="text-lg sm:text-xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
+            {formatRupiah(financialContext.totalExpense)}
           </div>
-          <span className={`text-[10px] font-bold mt-1 inline-flex items-center gap-1 ${financialContext.netSavings >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {financialContext.netSavings >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {financialContext.netSavings >= 0 ? 'Surplus Aman' : 'Defisit Anggaran'}
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+            {financialContext.daysInMonth} hari total periode
           </span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-            Rasio Tabungan
+        {/* Card 2: Total Pemasukan */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+            Total Pemasukan
           </span>
-          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-            {financialContext.savingsRate}%
+          <div className="text-lg sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+            {formatRupiah(financialContext.totalIncome)}
           </div>
-          <span className="text-[10px] text-slate-400 block mt-1">
-            Target ideal &gt; 20%
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+            Net: {formatRupiah(financialContext.netSavings)}
           </span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-            Rata-rata / Hari
+        {/* Card 3: Rata-rata Harian */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+            Rata-rata Harian
           </span>
-          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
+          <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
             {formatRupiah(financialContext.avgDailyExpense)}
           </div>
-          <span className="text-[10px] text-slate-400 block mt-1">
-            Pengeluaran harian
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+            per hari aktif
           </span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-            Saldo Kas Likuid
+        {/* Card 4: Rasio Tabungan */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+            Rasio Tabungan
           </span>
-          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">
-            {formatRupiah(financialContext.liquidBalance)}
+          <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+            {financialContext.savingsRate}%
           </div>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-1">
-            Bank, Kas & E-Wallet
+          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1 truncate">
+            Top: {financialContext.topExpenseCategoryName} ({financialContext.topExpenseCategoryPercent}%)
           </span>
         </div>
       </div>
@@ -420,7 +435,7 @@ export const AiAnalysisView: React.FC<AiAnalysisViewProps> = ({
                     <div className="flex items-center gap-1.5">
                       {m.source && (
                         <span className="px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 font-mono text-[9px]">
-                          {m.source === 'gemini' ? 'Gemini 3.8' : 'Local NLP'}
+                          {m.source === 'gemini' ? (m.modelUsed ? m.modelUsed.replace('gemini-', 'Gemini ') : 'Gemini AI') : 'Local NLP'}
                         </span>
                       )}
                       <span>{m.timestamp}</span>
