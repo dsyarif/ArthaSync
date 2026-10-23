@@ -17,6 +17,8 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   ChevronRight,
+  Mic,
+  Sparkles,
 } from 'lucide-react';
 import { Category, CloudSyncState, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
 import {
@@ -51,6 +53,7 @@ interface DashboardViewProps {
   onInlineUpdateTransaction?: (id: string, updates: Partial<Transaction>) => void;
   onOpenTransferModal?: () => void;
   debts?: DebtRecord[];
+  onOpenVoiceAi?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -69,6 +72,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectMemberFilter,
   onOpenTransferModal,
   debts = [],
+  onOpenVoiceAi,
 }) => {
   const currentDate = new Date();
   const currentYear = selectedYear || currentDate.getFullYear();
@@ -209,6 +213,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenVoiceAi && (
+            <button
+              onClick={onOpenVoiceAi}
+              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-700 hover:to-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+              title="Catat Cepat via Suara & AI"
+            >
+              <Mic className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Voice AI</span>
+            </button>
+          )}
           <button
             onClick={onQuickAdd}
             className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"

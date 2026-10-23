@@ -11,6 +11,8 @@ import {
   User,
   Zap,
   Calendar,
+  Mic,
+  Sparkles,
 } from 'lucide-react';
 import {
   AssetAccount,
@@ -38,6 +40,7 @@ interface HorizontalQuickAddBarProps {
     memberId: string;
     groupId: string;
   }) => void;
+  onOpenVoiceAi?: () => void;
   className?: string;
 }
 
@@ -47,6 +50,7 @@ export const HorizontalQuickAddBar: React.FC<HorizontalQuickAddBarProps> = ({
   assets,
   groupId,
   onSave,
+  onOpenVoiceAi,
   className = '',
 }) => {
   const [type, setType] = useState<TransactionType>('expense');
@@ -329,6 +333,18 @@ export const HorizontalQuickAddBar: React.FC<HorizontalQuickAddBarProps> = ({
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
+
+          {onOpenVoiceAi && (
+            <button
+              type="button"
+              onClick={onOpenVoiceAi}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-700 hover:to-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
+              title="Catat Cepat via Suara & AI"
+            >
+              <Mic className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Voice AI</span>
+            </button>
+          )}
 
           <button
             type="submit"

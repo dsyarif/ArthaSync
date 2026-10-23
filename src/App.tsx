@@ -4,11 +4,13 @@ import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { TransactionsView } from './components/TransactionsView';
 import { StatisticsView } from './components/StatisticsView';
+import { AiAnalysisView } from './components/AiAnalysisView';
 import { CategoriesView } from './components/CategoriesView';
 import { FamilyGroupView } from './components/FamilyGroupView';
 import { SettingsView } from './components/SettingsView';
 import { DebtsView } from './components/DebtsView';
 import { TransactionModal } from './components/TransactionModal';
+import { VoiceAiModal } from './components/VoiceAiModal';
 import { TransferModal } from './components/TransferModal';
 import { PrintReportModal } from './components/PrintReportModal';
 import { BiometricLockScreen } from './components/BiometricLockScreen';
@@ -79,6 +81,7 @@ export default function App() {
   const [duplicateTransaction, setDuplicateTransaction] = useState<Transaction | null>(null);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [voiceAiOpen, setVoiceAiOpen] = useState(false);
 
   // Synchronize dark mode class on <html>
   useEffect(() => {
@@ -142,6 +145,14 @@ export default function App() {
     };
 
   // Transaction Actions
+  const handleOpenVoiceAi = () => {
+    if (!syncState.isOnline) {
+      alert('Koneksi internet diperlukan untuk mencatat transaksi baru. Anda sedang dalam Mode Offline (Hanya Lihat).');
+      return;
+    }
+    setVoiceAiOpen(true);
+  };
+
   const handleOpenQuickAdd = () => {
     if (!syncState.isOnline) {
       alert('Koneksi internet diperlukan untuk mencatat transaksi baru. Anda sedang dalam Mode Offline (Hanya Lihat).');
@@ -465,6 +476,7 @@ export default function App() {
             onInlineUpdateTransaction={handleInlineUpdateTransaction}
             onOpenTransferModal={() => setTransferModalOpen(true)}
             debts={debts}
+            onOpenVoiceAi={handleOpenVoiceAi}
           />
         )}
 
@@ -474,6 +486,7 @@ export default function App() {
             categories={categories}
             currentGroup={currentGroup}
             onQuickAdd={handleOpenQuickAdd}
+            onOpenVoiceAi={handleOpenVoiceAi}
             onEditTransaction={handleEditTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             onOpenPrintReport={() => setPrintModalOpen(true)}
@@ -500,6 +513,18 @@ export default function App() {
               setSelectedYear(y);
               setSelectedMonth(m);
             }}
+          />
+        )}
+
+        {activeTab === 'ai-analysis' && (
+          <AiAnalysisView
+            transactions={transactions}
+            categories={categories}
+            currentGroup={currentGroup}
+            debts={debts}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onNavigateSettings={() => setActiveTab('settings')}
           />
         )}
 
@@ -581,6 +606,42 @@ export default function App() {
         transactions={transactions}
       />
 
+      {/* Voice & AI Transaction Input Modal */}
+      <VoiceAiModal
+        isOpen={voiceAiOpen}
+        onClose={() => setVoiceAiOpen(false)}
+        categories={categories}
+        assets={currentGroup.assets || []}
+        members={currentGroup.members || []}
+        groupId={currentGroup.id}
+        defaultMemberId={
+          selectedMemberFilter !== 'all' && selectedMemberFilter !== 'joint'
+            ? selectedMemberFilter
+            : currentGroup.members?.[0]?.id
+        }
+        onSave={handleQuickSaveTransaction}
+        onOpenFullModalWithData={(prefill) => {
+          setVoiceAiOpen(false);
+          setDuplicateTransaction(null);
+          setEditingTransaction({
+            id: '',
+            amount: prefill.amount || 0,
+            type: prefill.type || 'expense',
+            categoryId: prefill.categoryId || categories[0]?.id || '',
+            description: prefill.description || '',
+            date: prefill.date || new Date().toISOString().split('T')[0],
+            time: new Date().toTimeString().slice(0, 5),
+            paymentMethod: prefill.paymentMethod || 'tunai',
+            assetId: prefill.assetId,
+            groupId: currentGroup.id,
+            memberId: prefill.memberId || currentGroup.members?.[0]?.id || '',
+            syncStatus: 'pending',
+            updatedAt: Date.now(),
+          });
+          setTxModalOpen(true);
+        }}
+      />
+
       {/* Transfer Antar Rekening Modal */}
       <TransferModal
         isOpen={transferModalOpen}
@@ -608,6 +669,7 @@ export default function App() {
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       onQuickAdd={handleOpenQuickAdd}
+      onOpenVoiceAi={handleOpenVoiceAi}
     />
   </div>
   );

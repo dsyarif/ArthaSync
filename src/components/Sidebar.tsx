@@ -18,6 +18,7 @@ import {
   Fingerprint,
   ChevronDown,
   Check,
+  Sparkles,
 } from 'lucide-react';
 import { CloudSyncState, FamilyGroup, ReminderSettings } from '../types/finance';
 import { StorageService } from '../services/storage';
@@ -67,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transaksi', icon: Receipt },
     { id: 'statistics', label: 'Statistik & Grafik', icon: BarChart3 },
+    { id: 'ai-analysis', label: 'Analisa AI', icon: Sparkles, isAi: true },
     { id: 'debts', label: 'Utang Piutang', icon: Scale },
     { id: 'categories', label: 'Kategori Pos', icon: Tag },
     { id: 'family', label: 'Grup Keluarga', icon: Users },
@@ -191,14 +193,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 isActive
                   ? 'bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-l-4 border-emerald-500 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
-              <span>{item.label}</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : item.isAi ? 'text-indigo-500' : 'text-slate-400'}`} />
+                <span className="truncate">{item.label}</span>
+              </div>
+              {item.isAi && (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-2xs">
+                  AI
+                </span>
+              )}
             </button>
           );
         })}

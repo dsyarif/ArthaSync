@@ -23,6 +23,8 @@ import {
   User,
   Wallet,
   Tag,
+  Mic,
+  Sparkles,
 } from 'lucide-react';
 import { Category, FamilyGroup, Transaction } from '../types/finance';
 import {
@@ -53,6 +55,7 @@ interface TransactionsViewProps {
   onDuplicateTransaction?: (tx: Transaction) => void;
   onQuickSaveTransaction?: (txData: any) => void;
   onInlineUpdateTransaction?: (id: string, updates: Partial<Transaction>) => void;
+  onOpenVoiceAi?: () => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
@@ -69,6 +72,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   onDuplicateTransaction,
   onQuickSaveTransaction,
   onInlineUpdateTransaction,
+  onOpenVoiceAi,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -266,6 +270,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenVoiceAi && (
+            <button
+              onClick={onOpenVoiceAi}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-700 hover:to-purple-800 text-white rounded-xl text-xs font-bold shadow-sm shadow-indigo-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              title="Catat Transaksi menggunakan Suara & AI"
+            >
+              <Mic className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Voice AI</span>
+            </button>
+          )}
           <button
             onClick={() => setShowQuickAddBar(!showQuickAddBar)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
@@ -311,6 +325,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           assets={currentGroup.assets || []}
           groupId={currentGroup.id}
           onSave={onQuickSaveTransaction || onQuickAdd}
+          onOpenVoiceAi={onOpenVoiceAi}
         />
       )}
 

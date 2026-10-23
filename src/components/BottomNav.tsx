@@ -10,22 +10,26 @@ import {
   MoreHorizontal,
   ChevronUp,
   Scale,
+  Mic,
+  Sparkles,
 } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onQuickAdd: () => void;
+  onOpenVoiceAi?: () => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   setActiveTab,
   onQuickAdd,
+  onOpenVoiceAi,
 }) => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const isMoreTabActive = ['debts', 'categories', 'family', 'settings'].includes(activeTab);
+  const isMoreTabActive = ['ai-analysis', 'debts', 'categories', 'family', 'settings'].includes(activeTab);
 
   return (
     <>
@@ -40,6 +44,45 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               Menu Lainnya
             </div>
+
+            <button
+              onClick={() => {
+                onQuickAdd();
+                setShowMoreMenu(false);
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer mb-1"
+            >
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Plus className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold text-slate-800 dark:text-slate-100">Catat Manual (Form)</div>
+                <div className="text-[10px] text-slate-400 font-normal">Input form tambah transaksi</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('ai-analysis');
+                setShowMoreMenu(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                activeTab === 'ai-analysis'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <span>Analisa AI</span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] bg-indigo-600 text-white font-mono">NEW</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-normal">Tanya kondisi & saran keuangan</div>
+              </div>
+            </button>
 
             <button
               onClick={() => {
@@ -166,17 +209,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <span className="text-[11px] mt-0.5 tracking-tight font-medium">Transaksi</span>
           </button>
 
-          {/* Center Elevated Action Button (Tombol Tambah di Tengah) */}
+          {/* Center Elevated Action Button (Tombol Voice Catat di Tengah) */}
           <div className="relative flex-1 flex flex-col items-center justify-center">
             <button
-              onClick={onQuickAdd}
-              aria-label="Catat Transaksi Pengeluaran Baru"
-              className="-top-5 absolute flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 text-white shadow-xl shadow-emerald-500/40 border-4 border-slate-50 dark:border-slate-950 transition-all duration-200 hover:scale-110 active:scale-95 hover:shadow-emerald-500/60 cursor-pointer group"
+              onClick={onOpenVoiceAi || onQuickAdd}
+              aria-label="Catat Transaksi dengan Suara & AI"
+              className="-top-5 absolute flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-indigo-600 text-white shadow-xl shadow-emerald-500/40 border-4 border-slate-50 dark:border-slate-950 transition-all duration-200 hover:scale-110 active:scale-95 hover:shadow-emerald-500/60 cursor-pointer group"
             >
-              <Plus className="w-7 h-7 stroke-[2.8] transition-transform group-hover:rotate-90 duration-300" />
+              <Mic className="w-6 h-6 stroke-[2.4] text-white transition-transform group-hover:scale-110" />
             </button>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-7 tracking-tight">
-              Catat
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-7 tracking-tight">
+              Voice Catat
             </span>
           </div>
 

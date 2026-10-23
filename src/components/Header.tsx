@@ -68,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
     dashboard: 'Ringkasan Keuangan',
     transactions: 'Daftar Transaksi',
     statistics: 'Statistik & Grafik',
+    'ai-analysis': 'Analisa Keuangan AI',
     debts: 'Utang & Piutang',
     categories: 'Kategori Pos Keuangan',
     family: 'Grup & Anggota Keluarga',

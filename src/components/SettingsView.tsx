@@ -19,6 +19,11 @@ import {
   Trash2,
   RotateCcw,
   Database,
+  Sparkles,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Zap,
 } from 'lucide-react';
 import {
   CloudSyncState,
@@ -33,6 +38,7 @@ import { NotificationService } from '../services/notification';
 import { StorageService } from '../services/storage';
 import { generateCsvData } from '../utils/finance';
 import { SUPABASE_URL, isSupabaseConfigured } from '../services/supabase';
+import { testGeminiConnection } from '../services/aiParser';
 
 interface SettingsViewProps {
   darkMode: boolean;
@@ -70,6 +76,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [pinSavedMessage, setPinSavedMessage] = useState(false);
   const [notifTestSuccess, setNotifTestSuccess] = useState(false);
   const [biometricFeedback, setBiometricFeedback] = useState('');
+
+  // Google Gemini AI Settings
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('arthasync_gemini_api_key') || '');
+  const [showKey, setShowKey] = useState(false);
+  const [isTestingAi, setIsTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [keySavedMessage, setKeySavedMessage] = useState(false);
+
+  const handleSaveGeminiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (geminiApiKey.trim()) {
+      localStorage.setItem('arthasync_gemini_api_key', geminiApiKey.trim());
+    } else {
+      localStorage.removeItem('arthasync_gemini_api_key');
+    }
+    setKeySavedMessage(true);
+    setAiTestResult(null);
+    setTimeout(() => setKeySavedMessage(false), 3000);
+  };
+
+  const handleTestGemini = async () => {
+    if (!geminiApiKey.trim()) {
+      setAiTestResult({ success: false, message: 'Masukkan API Key terlebih dahulu sebelum menguji.' });
+      return;
+    }
+    setIsTestingAi(true);
+    setAiTestResult(null);
+    const result = await testGeminiConnection(geminiApiKey.trim());
+    setAiTestResult(result);
+    setIsTestingAi(false);
+  };
+
+  const handleRemoveGeminiKey = () => {
+    localStorage.removeItem('arthasync_gemini_api_key');
+    setGeminiApiKey('');
+    setAiTestResult(null);
+    setKeySavedMessage(true);
+    setTimeout(() => setKeySavedMessage(false), 2500);
+  };
 
   const handleSavePin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -488,7 +533,122 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 5. Cadangan & Ekspor Data */}
+        {/* 5. Google Gemini AI & Voice Assistant Configuration */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Google Gemini AI (Asisten Suara & Teks Pintar)
+              </h2>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+              <Zap className="w-3 h-3 text-amber-500" />
+              Hybrid AI Mode
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              ArthaSync dilengkapi dengan <b>Smart Local NLP (0ms, 100% offline & gratis)</b> untuk mengenali ucapan bahasa Indonesia sehari-hari. Anda juga dapat menghubungkan <b>Google Gemini AI Key</b> untuk mengenali kalimat yang lebih fleksibel, panjang, dan kompleks.
+            </p>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>Belum punya API Key?</span>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline inline-flex items-center gap-1"
+              >
+                <span>Dapatkan API Key Gratis di Google AI Studio</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveGeminiKey} className="space-y-3 pt-1">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Gemini API Key:
+              </label>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full pl-3.5 pr-20 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-600/30 cursor-pointer"
+              >
+                Simpan API Key
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestGemini}
+                disabled={isTestingAi || !geminiApiKey.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 disabled:opacity-50 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              >
+                {isTestingAi ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                )}
+                <span>{isTestingAi ? 'Menguji...' : 'Uji Koneksi AI'}</span>
+              </button>
+
+              {geminiApiKey && (
+                <button
+                  type="button"
+                  onClick={handleRemoveGeminiKey}
+                  className="px-3 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+                >
+                  Hapus Kunci
+                </button>
+              )}
+            </div>
+
+            {keySavedMessage && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Pengaturan Gemini API Key berhasil diperbarui!</span>
+              </p>
+            )}
+
+            {aiTestResult && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-center gap-2 border animate-in fade-in ${
+                  aiTestResult.success
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-rose-200 dark:border-rose-800'
+                }`}
+              >
+                {aiTestResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{aiTestResult.message}</span>
+              </div>
+            )}
+          </form>
+        </div>
+
+        {/* 6. Cadangan & Ekspor Data */}
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
             <Download className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
