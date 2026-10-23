@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Plus,
   Edit2,
@@ -9,14 +9,23 @@ import {
   X,
   Check,
   Percent,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  User,
+  Wallet,
+  Clock,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
-import { Category, Transaction } from '../types/finance';
-import { formatRupiah, parseRupiahInput } from '../utils/finance';
+import { Category, FamilyGroup, Transaction } from '../types/finance';
+import { formatIndonesianDate, formatRupiah, parseRupiahInput } from '../utils/finance';
 import { CategoryIcon, ICON_OPTIONS } from './CategoryIcon';
 
 interface CategoriesViewProps {
   categories: Category[];
   transactions: Transaction[];
+  currentGroup?: FamilyGroup;
   onAddCategory: (cat: Omit<Category, 'id' | 'updatedAt'>) => void;
   onUpdateCategory: (id: string, updates: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
@@ -42,6 +51,7 @@ const COLOR_PALETTE = [
 export const CategoriesView: React.FC<CategoriesViewProps> = ({
   categories,
   transactions,
+  currentGroup,
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
@@ -52,6 +62,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
+  // Detail Modal per category state
+  const [selectedCategoryDetail, setSelectedCategoryDetail] = useState<Category | null>(null);
+
   const [categoryType, setCategoryType] = useState<'expense' | 'income'>('expense');
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('Utensils');
@@ -59,11 +72,38 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const [budgetInput, setBudgetInput] = useState('');
   const [error, setError] = useState('');
 
+  const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
   // Calculate selected month spending & income per category
   const now = new Date();
   const yearToUse = selectedYear || now.getFullYear();
   const monthToUse = selectedMonth || (now.getMonth() + 1);
   const currentMonthPrefix = `${yearToUse}-${String(monthToUse).padStart(2, '0')}`;
+
+  const [detailYear, setDetailYear] = useState<number>(yearToUse);
+  const [detailMonth, setDetailMonth] = useState<number>(monthToUse);
+
+  React.useEffect(() => {
+    setDetailYear(yearToUse);
+    setDetailMonth(monthToUse);
+  }, [yearToUse, monthToUse]);
+
+  const memMap = useMemo(() => new Map((currentGroup?.members || []).map((m) => [m.id, m])), [currentGroup?.members]);
+  const assetMap = useMemo(() => new Map((currentGroup?.assets || []).map((a) => [a.id, a])), [currentGroup?.assets]);
+
+  // Frequency count of transactions per category across all transactions
+  const categoryUsageCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of transactions) {
+      if (!t.isDeleted) {
+        counts[t.categoryId] = (counts[t.categoryId] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [transactions]);
   
   const currentMonthExpenseTransactions = transactions.filter(
     (t) => !t.isDeleted && t.type === 'expense' && t.date.startsWith(currentMonthPrefix)
@@ -83,7 +123,17 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
   const expenseCategories = categories.filter((c) => c.type !== 'income');
   const incomeCategories = categories.filter((c) => c.type === 'income');
-  const displayedCategories = activeTab === 'expense' ? expenseCategories : incomeCategories;
+
+  // Categories sorted by transaction count (most transactions first)
+  const displayedCategories = useMemo(() => {
+    const list = activeTab === 'expense' ? expenseCategories : incomeCategories;
+    return [...list].sort((a, b) => {
+      const countA = categoryUsageCount[a.id] || 0;
+      const countB = categoryUsageCount[b.id] || 0;
+      if (countB !== countA) return countB - countA;
+      return a.name.localeCompare(b.name);
+    });
+  }, [activeTab, expenseCategories, incomeCategories, categoryUsageCount]);
 
   const handleOpenAdd = () => {
     setEditingCategory(null);
@@ -218,10 +268,18 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             const isOverExpense = isExpense && targetOrBudget > 0 && spent > targetOrBudget;
             const isIncomeTargetAchieved = !isExpense && targetOrBudget > 0 && received >= targetOrBudget;
 
+            const count = categoryUsageCount[cat.id] || 0;
+
             return (
               <div
                 key={cat.id}
-                className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all group"
+                onClick={() => {
+                  setSelectedCategoryDetail(cat);
+                  setDetailYear(yearToUse);
+                  setDetailMonth(monthToUse);
+                }}
+                className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-emerald-500/60 dark:hover:border-emerald-500/60 hover:shadow-md transition-all group cursor-pointer"
+                title="Klik untuk melihat rincian riwayat transaksi bulanan"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-3">
@@ -233,19 +291,29 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                         <CategoryIcon name={cat.icon} className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {cat.name}
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <span>{cat.name}</span>
                         </h3>
-                        <span className="text-[11px] text-slate-400">
-                          {cat.isDefault ? 'Kategori Bawaan' : 'Kategori Kustom'}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-slate-400">
+                            {cat.isDefault ? 'Kategori Bawaan' : 'Kategori Kustom'}
+                          </span>
+                          <span className="text-slate-300 dark:text-slate-700">·</span>
+                          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 px-1.5 py-0.2 rounded-full">
+                            {count}x dicatat
+                          </span>
+                        </div>
                       </div>
                     </div>
 
                     {/* Actions */}
                     <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100">
                       <button
-                        onClick={() => handleOpenEdit(cat)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(cat);
+                        }}
                         className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                         title="Edit Kategori"
                       >
@@ -253,7 +321,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                       </button>
                       {!cat.isDefault && (
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (confirm(`Hapus kategori "${cat.name}"?`)) {
                               onDeleteCategory(cat.id);
                             }
@@ -336,6 +406,12 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Card Clickable Footer Pill */}
+                <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400 group-hover:text-emerald-500 transition-colors">
+                  <span>Lihat Rincian Transaksi</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </div>
             );
@@ -515,6 +591,277 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
           </div>
         </div>
       )}
+      {/* Pop-up Modal: Detail Transaksi Kategori Per Bulan */}
+      {selectedCategoryDetail && (() => {
+        const isExp = selectedCategoryDetail.type !== 'income';
+        const targetPrefix = `${detailYear}-${String(detailMonth).padStart(2, '0')}`;
+        const catMonthTransactions = transactions
+          .filter(
+            (t) =>
+              !t.isDeleted &&
+              t.categoryId === selectedCategoryDetail.id &&
+              t.date.startsWith(targetPrefix)
+          )
+          .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+
+        const totalMonthAmount = catMonthTransactions.reduce((acc, t) => acc + t.amount, 0);
+        const budgetOrTarget = selectedCategoryDetail.monthlyBudget || 0;
+        const percentBudget = budgetOrTarget > 0 ? Math.round((totalMonthAmount / budgetOrTarget) * 100) : 0;
+        const avgPerTx = catMonthTransactions.length > 0 ? Math.round(totalMonthAmount / catMonthTransactions.length) : 0;
+
+        const handlePrevMonth = () => {
+          if (detailMonth === 1) {
+            setDetailMonth(12);
+            setDetailYear((y) => y - 1);
+          } else {
+            setDetailMonth((m) => m - 1);
+          }
+        };
+
+        const handleNextMonth = () => {
+          if (detailMonth === 12) {
+            setDetailMonth(1);
+            setDetailYear((y) => y + 1);
+          } else {
+            setDetailMonth((m) => m + 1);
+          }
+        };
+
+        const isCurrentMonthView = detailYear === yearToUse && detailMonth === monthToUse;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[88vh] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-xs shrink-0"
+                    style={{ backgroundColor: selectedCategoryDetail.color }}
+                  >
+                    <CategoryIcon name={selectedCategoryDetail.icon} className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                        {selectedCategoryDetail.name}
+                      </h3>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isExp
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        }`}
+                      >
+                        {isExp ? 'Pengeluaran' : 'Pemasukan'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Rincian riwayat transaksi bulanan
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryDetail(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Tutup Modal"
+                  aria-label="Tutup"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Month Navigator Toolbar */}
+              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                    title="Bulan Sebelumnya"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-xs text-slate-800 dark:text-slate-200 shadow-2xs">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      {monthNames[detailMonth - 1]} {detailYear}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                    title="Bulan Berikutnya"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {!isCurrentMonthView && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailYear(yearToUse);
+                      setDetailMonth(monthToUse);
+                    }}
+                    className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                  >
+                    Kembali ke Bulan Ini
+                  </button>
+                )}
+              </div>
+
+              {/* Summary KPI Cards */}
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Total {isExp ? 'Belanja' : 'Pemasukan'}
+                  </span>
+                  <div
+                    className={`text-base font-bold font-mono mt-1 ${
+                      isExp ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    {formatRupiah(totalMonthAmount)}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Jumlah Transaksi
+                  </span>
+                  <div className="text-base font-bold font-mono text-slate-900 dark:text-white mt-1">
+                    {catMonthTransactions.length}x
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Rata-rata: {formatRupiah(avgPerTx, { compact: true })}
+                  </span>
+                </div>
+
+                <div className="col-span-2 sm:col-span-1 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    {isExp ? 'Pagu Anggaran' : 'Target'}
+                  </span>
+                  <div className="text-base font-bold font-mono text-slate-900 dark:text-white mt-1">
+                    {budgetOrTarget > 0 ? formatRupiah(budgetOrTarget) : 'Bebas'}
+                  </div>
+                  {budgetOrTarget > 0 && (
+                    <span
+                      className={`text-[10px] font-bold ${
+                        isExp && totalMonthAmount > budgetOrTarget
+                          ? 'text-red-500'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      {percentBudget}% terpakai
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Transactions List */}
+              <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-800/60">
+                {catMonthTransactions.length === 0 ? (
+                  <div className="py-14 text-center text-xs text-slate-400 space-y-1">
+                    <p className="font-semibold text-slate-600 dark:text-slate-300">
+                      Belum Ada Transaksi
+                    </p>
+                    <p>
+                      Tidak ada catatan {isExp ? 'pengeluaran' : 'pemasukan'} pada kategori{' '}
+                      <strong>{selectedCategoryDetail.name}</strong> di bulan{' '}
+                      {monthNames[detailMonth - 1]} {detailYear}.
+                    </p>
+                  </div>
+                ) : (
+                  catMonthTransactions.map((tx) => {
+                    const mem = memMap.get(tx.memberId);
+                    const ast = tx.assetId ? assetMap.get(tx.assetId) : undefined;
+
+                    return (
+                      <div
+                        key={tx.id}
+                        className="py-3 first:pt-1 last:pb-1 flex items-center justify-between gap-3 text-xs hover:bg-slate-50/60 dark:hover:bg-slate-800/40 rounded-xl px-2 transition-colors"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          {mem ? (
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5 shadow-2xs"
+                              style={{ backgroundColor: mem.avatarColor || '#3b82f6' }}
+                              title={mem.name}
+                            >
+                              {mem.name.charAt(0)}
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                              <User className="w-3.5 h-3.5 text-slate-500" />
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                              {tx.description || 'Tanpa keterangan'}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
+                              <span>{formatIndonesianDate(tx.date, { monthFormat: 'short' })}</span>
+                              <span>·</span>
+                              <span>{tx.time} WIB</span>
+                              {mem && (
+                                <>
+                                  <span>·</span>
+                                  <span className="font-medium text-slate-600 dark:text-slate-400">
+                                    {mem.name}
+                                  </span>
+                                </>
+                              )}
+                              {ast && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    {ast.name}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span
+                            className={`font-bold font-mono text-xs ${
+                              isExp ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
+                            {isExp ? '-' : '+'}{formatRupiah(tx.amount)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+                <span className="text-xs text-slate-400 font-mono">
+                  {catMonthTransactions.length} transaksi di {monthNames[detailMonth - 1]} {detailYear}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryDetail(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

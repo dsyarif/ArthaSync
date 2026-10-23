@@ -57,6 +57,7 @@ interface TransactionModalProps {
   groupId: string;
   editingTransaction?: Transaction | null;
   duplicateTransaction?: Transaction | null;
+  transactions?: Transaction[];
   isOnline?: boolean;
 }
 
@@ -71,6 +72,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   groupId,
   editingTransaction,
   duplicateTransaction,
+  transactions = [],
   isOnline = true,
 }) => {
   const [type, setType] = useState<TransactionType>('expense');
@@ -82,6 +84,31 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [error, setError] = useState('');
+
+  // Category frequency calculation (must be declared unconditionally at top level)
+  const categoryUsageMap = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (transactions) {
+      for (const t of transactions) {
+        if (!t.isDeleted) {
+          counts[t.categoryId] = (counts[t.categoryId] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [transactions]);
+
+  const activeCategories = React.useMemo(() => {
+    const list = categories.filter((c) =>
+      type === 'expense' ? c.type !== 'income' : c.type === 'income'
+    );
+    return list.sort((a, b) => {
+      const countA = categoryUsageMap[a.id] || 0;
+      const countB = categoryUsageMap[b.id] || 0;
+      if (countB !== countA) return countB - countA;
+      return a.name.localeCompare(b.name);
+    });
+  }, [categories, type, categoryUsageMap]);
 
   useEffect(() => {
     const targetMember =
@@ -237,10 +264,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         return <CreditCard className="w-3.5 h-3.5" />;
     }
   };
-
-  const activeCategories = categories.filter((c) =>
-    type === 'expense' ? c.type !== 'income' : c.type === 'income'
-  );
 
   const memMap = new Map(members.map((m) => [m.id, m]));
   const parsedAmount = parseRupiahInput(amountInput);

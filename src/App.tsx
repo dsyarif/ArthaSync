@@ -507,6 +507,7 @@ export default function App() {
           <CategoriesView
             categories={categories}
             transactions={transactions}
+            currentGroup={currentGroup}
             onAddCategory={handleAddCategory}
             onUpdateCategory={handleUpdateCategory}
             onDeleteCategory={handleDeleteCategory}
@@ -577,6 +578,7 @@ export default function App() {
         groupId={currentGroup.id}
         editingTransaction={editingTransaction}
         duplicateTransaction={duplicateTransaction}
+        transactions={transactions}
       />
 
       {/* Transfer Antar Rekening Modal */}

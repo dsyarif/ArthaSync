@@ -19,6 +19,10 @@ import {
   LayoutList,
   List,
   ArrowDownUp,
+  Clock,
+  User,
+  Wallet,
+  Tag,
 } from 'lucide-react';
 import { Category, FamilyGroup, Transaction } from '../types/finance';
 import {
@@ -77,6 +81,27 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [showQuickAddBar, setShowQuickAddBar] = useState(false);
   const [viewMode, setViewMode] = useState<'detail' | 'simple'>('detail');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [selectedDetailTx, setSelectedDetailTx] = useState<Transaction | null>(null);
+
+  // Category frequency calculation: prioritize most frequently used categories
+  const categoryUsageCount = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of transactions) {
+      if (!t.isDeleted) {
+        counts[t.categoryId] = (counts[t.categoryId] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [transactions]);
+
+  const sortedCategories = React.useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const countA = categoryUsageCount[a.id] || 0;
+      const countB = categoryUsageCount[b.id] || 0;
+      if (countB !== countA) return countB - countA;
+      return a.name.localeCompare(b.name);
+    });
+  }, [categories, categoryUsageCount]);
 
   // Inline editing state
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
@@ -281,7 +306,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       {/* Feature 5: Horizontal Quick Add Bar */}
       {showQuickAddBar && (
         <HorizontalQuickAddBar
-          categories={categories}
+          categories={sortedCategories}
           members={currentGroup.members || []}
           assets={currentGroup.assets || []}
           groupId={currentGroup.id}
@@ -405,11 +430,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               >
                 <option value="all">Semua Kategori</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {sortedCategories.map((c) => {
+                  const count = categoryUsageCount[c.id] || 0;
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {count > 0 ? `(${count}x)` : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -702,7 +730,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                       return (
                         <div
                           key={tx.id}
-                          className="px-3.5 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-3 hover:bg-slate-50/90 dark:hover:bg-slate-800/50 transition-colors group"
+                          onClick={() => setSelectedDetailTx(tx)}
+                          className="px-3.5 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-3 hover:bg-slate-50/90 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                          title="Klik untuk melihat detail lengkap transaksi"
                         >
                           {/* Left: Dot, Time, Description, Category Tag */}
                           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
@@ -746,8 +776,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                             <span
                               className={`text-xs sm:text-sm font-bold font-mono text-right ${
                                 isExpense
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-emerald-600 dark:text-emerald-400'
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : 'text-emerald-600 dark:text-emerald-400'
                               }`}
                             >
                               {isExpense ? '-' : '+'}
@@ -758,7 +788,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                             <div className="flex items-center gap-0.5 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                               {onDuplicateTransaction && (
                                 <button
-                                  onClick={() => onDuplicateTransaction(tx)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDuplicateTransaction(tx);
+                                  }}
                                   className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded transition-colors cursor-pointer"
                                   title="Duplikat Transaksi"
                                 >
@@ -766,21 +799,28 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => handleStartInlineEdit(tx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartInlineEdit(tx);
+                                }}
                                 className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors cursor-pointer"
                                 title="Edit Cepat Horizontal"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => onEditTransaction(tx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditTransaction(tx);
+                                }}
                                 className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
                                 title="Edit Lengkap"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   if (confirm(`Yakin ingin menghapus catatan "${tx.description}"?`)) {
                                     onDeleteTransaction(tx.id);
                                   }
@@ -800,8 +840,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     return (
                       <div
                         key={tx.id}
-                        className="p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                        onClick={() => setSelectedDetailTx(tx)}
+                        className="p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
                         style={{ borderLeftWidth: '4px', borderLeftColor: mem?.avatarColor || '#2563eb' }}
+                        title="Klik untuk melihat detail lengkap transaksi"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {/* Category Icon Badge */}
@@ -883,7 +925,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           <div className="flex items-center gap-0.5 sm:gap-1">
                             {onDuplicateTransaction && (
                               <button
-                                onClick={() => onDuplicateTransaction(tx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDuplicateTransaction(tx);
+                                }}
                                 className="p-1 sm:p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer"
                                 title="Duplikat Transaksi Ini"
                                 aria-label={`Duplikat ${tx.description}`}
@@ -892,7 +937,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               </button>
                             )}
                             <button
-                              onClick={() => handleStartInlineEdit(tx)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartInlineEdit(tx);
+                              }}
                               className="p-1 sm:p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
                               title="Edit Langsung Horizontal"
                               aria-label={`Edit Cepat ${tx.description}`}
@@ -900,7 +948,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => onEditTransaction(tx)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditTransaction(tx);
+                              }}
                               className="p-1 sm:p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                               title="Edit di Modal"
                               aria-label={`Edit ${tx.description}`}
@@ -908,7 +959,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (confirm(`Yakin ingin menghapus catatan "${tx.description}"?`)) {
                                   onDeleteTransaction(tx.id);
                                 }
@@ -930,6 +982,214 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           })}
         </div>
       )}
+
+      {/* Pop-up Modal: Detail Lengkap Transaksi */}
+      {selectedDetailTx && (() => {
+        const detailCat = categories.find((c) => c.id === selectedDetailTx.categoryId);
+        const detailMem = (currentGroup.members || []).find((m) => m.id === selectedDetailTx.memberId);
+        const detailAsset = (currentGroup.assets || []).find((a) => a.id === selectedDetailTx.assetId);
+        const isExp = selectedDetailTx.type === 'expense';
+
+        const paymentLabel =
+          selectedDetailTx.paymentMethod === 'tunai'
+            ? 'Uang Tunai / Kas Fisik'
+            : selectedDetailTx.paymentMethod === 'qris_ewallet'
+            ? 'QRIS / Dompet Digital (E-Wallet)'
+            : 'Transfer Bank';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xs shrink-0"
+                    style={{ backgroundColor: detailCat?.color || '#94a3b8' }}
+                  >
+                    <CategoryIcon name={detailCat?.icon || 'Tag'} className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                      {detailCat?.name || 'Kategori Lainnya'}
+                    </h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          selectedDetailTx.isTransfer
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                            : isExp
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        }`}
+                      >
+                        {selectedDetailTx.isTransfer ? 'Transfer Antar Rekening' : isExp ? 'Pengeluaran' : 'Pemasukan'}
+                      </span>
+                      {selectedDetailTx.syncStatus === 'synced' ? (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          <Cloud className="w-3 h-3" /> Cloud Synced
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-500">
+                          <CloudOff className="w-3 h-3" /> Offline
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setSelectedDetailTx(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Tutup Detail"
+                  aria-label="Tutup"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
+                {/* Nominal Display Banner */}
+                <div
+                  className={`p-4 rounded-2xl text-center border ${
+                    isExp
+                      ? 'bg-red-50/50 dark:bg-red-950/20 border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400'
+                      : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Nominal Transaksi
+                  </span>
+                  <div className="text-2xl sm:text-3xl font-bold font-mono mt-1">
+                    {isExp ? '-' : '+'}{formatRupiah(selectedDetailTx.amount)}
+                  </div>
+                </div>
+
+                {/* Description Box */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    Keterangan / Catatan:
+                  </span>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 break-words">
+                    {selectedDetailTx.description || 'Tidak ada keterangan'}
+                  </p>
+                </div>
+
+                {/* Metadata List */}
+                <div className="space-y-2.5 text-xs">
+                  {/* Tanggal & Waktu */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60">
+                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Tanggal & Waktu</span>
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
+                      {formatIndonesianDate(selectedDetailTx.date)} · {selectedDetailTx.time} WIB
+                    </span>
+                  </div>
+
+                  {/* Anggota Pencatat */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60">
+                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Dicatat Oleh</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: detailMem?.avatarColor || '#3b82f6' }}
+                      />
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {detailMem?.name || 'Anggota'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Rekening / Sumber Dana */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60">
+                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Rekening / Sumber Dana</span>
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {detailAsset ? detailAsset.name : 'Tidak terhubung rekening'}
+                    </span>
+                  </div>
+
+                  {/* Metode Pembayaran */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60">
+                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Metode Pembayaran</span>
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {paymentLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  {onDuplicateTransaction && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tx = selectedDetailTx;
+                        setSelectedDetailTx(null);
+                        onDuplicateTransaction(tx);
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Duplikat transaksi ini"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Duplikat</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tx = selectedDetailTx;
+                      setSelectedDetailTx(null);
+                      onEditTransaction(tx);
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                    title="Edit transaksi"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Yakin ingin menghapus catatan "${selectedDetailTx.description}"?`)) {
+                        const id = selectedDetailTx.id;
+                        setSelectedDetailTx(null);
+                        onDeleteTransaction(id);
+                      }
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                    title="Hapus transaksi"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetailTx(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
