@@ -4,6 +4,7 @@ import {
   formatRupiah,
   parseRupiahInput,
   calculateMonthlyStats,
+  calculateYearlyStats,
   calculateBudgetStatus,
   filterTransactions,
   groupTransactionsByDate,
@@ -536,4 +537,161 @@ test('formatIndonesianDate formats ISO date strings into Indonesian localized fo
   assert.equal(formatIndonesianDate('2026-12-31'), '31 Des 2026');
   assert.equal(formatIndonesianDate(''), '');
   assert.equal(formatIndonesianDate('invalid-date'), 'invalid-date');
+});
+
+test('calculateYearlyStats aggregates 12 months timeline, categories, and member totals', () => {
+  const dummyCategories: Category[] = [
+    { id: 'cat-1', name: 'Makanan & Kuliner', icon: 'Utensils', color: '#f97316', monthlyBudget: 1500000, updatedAt: 1 },
+    { id: 'cat-2', name: 'Transportasi', icon: 'Car', color: '#3b82f6', monthlyBudget: 500000, updatedAt: 1 },
+  ];
+
+  const dummyMembers: FamilyMember[] = [
+    { id: 'mem-1', name: 'Ayah', role: 'kepala_keluarga', avatarColor: '#3b82f6' },
+    { id: 'mem-2', name: 'Ibu', role: 'pasangan', avatarColor: '#ec4899' },
+  ];
+
+  const dummyTransactions: Transaction[] = [
+    // January 2026
+    {
+      id: 'tx-jan-1',
+      amount: 1000000,
+      type: 'expense',
+      categoryId: 'cat-1',
+      description: 'Belanja bulanan Jan',
+      date: '2026-01-10',
+      time: '10:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+    {
+      id: 'tx-jan-inc',
+      amount: 10000000,
+      type: 'income',
+      categoryId: 'cat-income',
+      description: 'Gaji Januari',
+      date: '2026-01-01',
+      time: '08:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+    // June 2026 (Highest Expense Month)
+    {
+      id: 'tx-jun-1',
+      amount: 3500000,
+      type: 'expense',
+      categoryId: 'cat-2',
+      description: 'Servis mobil besar',
+      date: '2026-06-15',
+      time: '14:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+    // October 2026
+    {
+      id: 'tx-okt-1',
+      amount: 500000,
+      type: 'expense',
+      categoryId: 'cat-1',
+      description: 'Belanja sayur Okt',
+      date: '2026-10-05',
+      time: '11:00',
+      paymentMethod: 'tunai',
+      groupId: 'grp-1',
+      memberId: 'mem-2',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+    // Soft deleted item (should be excluded)
+    {
+      id: 'tx-deleted',
+      amount: 9999999,
+      type: 'expense',
+      categoryId: 'cat-1',
+      description: 'Salah catat',
+      date: '2026-05-10',
+      time: '10:00',
+      paymentMethod: 'tunai',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+      isDeleted: true,
+    },
+    // Other year item 2025 (should be excluded)
+    {
+      id: 'tx-2025',
+      amount: 500000,
+      type: 'expense',
+      categoryId: 'cat-1',
+      description: 'Tahun lalu',
+      date: '2025-10-10',
+      time: '10:00',
+      paymentMethod: 'tunai',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+  ];
+
+  const yearly = calculateYearlyStats(dummyTransactions, dummyCategories, dummyMembers, 2026);
+
+  // Check 12 monthly slots
+  assert.equal(yearly.year, 2026);
+  assert.equal(yearly.monthlyTimeline.length, 12);
+  assert.equal(yearly.monthlyTimeline[0].monthShortName, 'Jan');
+  assert.equal(yearly.monthlyTimeline[0].totalSpent, 1000000);
+  assert.equal(yearly.monthlyTimeline[0].totalIncome, 10000000);
+  assert.equal(yearly.monthlyTimeline[0].netSavings, 9000000);
+  assert.equal(yearly.monthlyTimeline[0].savingsRate, 90);
+
+  // June check
+  assert.equal(yearly.monthlyTimeline[5].monthShortName, 'Jun');
+  assert.equal(yearly.monthlyTimeline[5].totalSpent, 3500000);
+
+  // October check
+  assert.equal(yearly.monthlyTimeline[9].monthShortName, 'Okt');
+  assert.equal(yearly.monthlyTimeline[9].totalSpent, 500000);
+
+  // Totals: totalSpent = 1,000,000 + 3,500,000 + 500,000 = 5,000,000
+  assert.equal(yearly.totalSpent, 5000000);
+  assert.equal(yearly.totalIncome, 10000000);
+  assert.equal(yearly.netSavings, 5000000);
+  assert.equal(yearly.savingsRate, 50);
+
+  // Peak month
+  assert.ok(yearly.highestExpenseMonth);
+  assert.equal(yearly.highestExpenseMonth?.month, 6);
+  assert.equal(yearly.highestExpenseMonth?.totalSpent, 3500000);
+
+  // Lowest expense month among active expense months
+  assert.ok(yearly.lowestExpenseMonth);
+  assert.equal(yearly.lowestExpenseMonth?.month, 10);
+  assert.equal(yearly.lowestExpenseMonth?.totalSpent, 500000);
+
+  // Category breakdown: Transportasi 3.5jt (70%), Makanan 1.5jt (30%)
+  assert.equal(yearly.categoryBreakdown.length, 2);
+  assert.equal(yearly.categoryBreakdown[0].categoryName, 'Transportasi');
+  assert.equal(yearly.categoryBreakdown[0].amount, 3500000);
+  assert.equal(yearly.categoryBreakdown[0].percentage, 70);
+
+  assert.equal(yearly.categoryBreakdown[1].categoryName, 'Makanan & Kuliner');
+  assert.equal(yearly.categoryBreakdown[1].amount, 1500000);
+  assert.equal(yearly.categoryBreakdown[1].percentage, 30);
+
+  // Member breakdown: Ayah spent 4.5jt, Ibu spent 500k
+  assert.equal(yearly.memberBreakdown.length, 2);
+  assert.equal(yearly.memberBreakdown[0].memberName, 'Ayah');
+  assert.equal(yearly.memberBreakdown[0].amount, 4500000);
+  assert.equal(yearly.memberBreakdown[1].memberName, 'Ibu');
+  assert.equal(yearly.memberBreakdown[1].amount, 500000);
 });

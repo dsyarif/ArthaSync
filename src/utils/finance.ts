@@ -241,6 +241,196 @@ export function calculateMonthlyStats(
 }
 
 /**
+ * Summary statistics for a single month in yearly overview
+ */
+export interface MonthSummaryStat {
+  month: number; // 1-12
+  monthName: string; // "Januari", etc.
+  monthShortName: string; // "Jan", etc.
+  totalSpent: number;
+  totalIncome: number;
+  netSavings: number;
+  savingsRate: number;
+  transactionCount: number;
+}
+
+export interface YearlyStatsResult {
+  year: number;
+  totalSpent: number;
+  totalIncome: number;
+  netSavings: number;
+  savingsRate: number;
+  averageMonthlySpent: number;
+  averageMonthlyIncome: number;
+  monthlyTimeline: MonthSummaryStat[]; // 12 items for Jan..Dec
+  highestExpenseMonth: MonthSummaryStat | null;
+  lowestExpenseMonth: MonthSummaryStat | null;
+  highestIncomeMonth: MonthSummaryStat | null;
+  categoryBreakdown: CategoryStat[];
+  memberBreakdown: MemberStat[];
+  topExpenseCategory: CategoryStat | null;
+}
+
+/**
+ * Calculate full yearly statistics (month-by-month for entire 12 months)
+ */
+export function calculateYearlyStats(
+  transactions: Transaction[],
+  categories: Category[],
+  members: FamilyMember[],
+  year: number
+): YearlyStatsResult {
+  const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const longMonths = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
+  const yearPrefix = `${year}-`;
+  const yearlyItems = transactions.filter((t) => !t.isDeleted && t.date.startsWith(yearPrefix));
+
+  let totalSpent = 0;
+  let totalIncome = 0;
+  const categoryTotals: Record<string, { amount: number; count: number }> = {};
+  const memberTotals: Record<string, { amount: number; count: number }> = {};
+
+  // Initialize 12 monthly slots
+  const monthlyTimeline: MonthSummaryStat[] = [];
+  for (let m = 1; m <= 12; m++) {
+    monthlyTimeline.push({
+      month: m,
+      monthName: longMonths[m - 1],
+      monthShortName: shortMonths[m - 1],
+      totalSpent: 0,
+      totalIncome: 0,
+      netSavings: 0,
+      savingsRate: 0,
+      transactionCount: 0,
+    });
+  }
+
+  for (const item of yearlyItems) {
+    const parts = item.date.split('-');
+    const monthNum = parseInt(parts[1], 10);
+    const mIdx = monthNum - 1;
+
+    if (mIdx >= 0 && mIdx < 12) {
+      monthlyTimeline[mIdx].transactionCount += 1;
+
+      if (item.type === 'expense') {
+        monthlyTimeline[mIdx].totalSpent += item.amount;
+        totalSpent += item.amount;
+
+        // Category breakdown
+        if (!categoryTotals[item.categoryId]) {
+          categoryTotals[item.categoryId] = { amount: 0, count: 0 };
+        }
+        categoryTotals[item.categoryId].amount += item.amount;
+        categoryTotals[item.categoryId].count += 1;
+
+        // Member breakdown
+        if (!memberTotals[item.memberId]) {
+          memberTotals[item.memberId] = { amount: 0, count: 0 };
+        }
+        memberTotals[item.memberId].amount += item.amount;
+        memberTotals[item.memberId].count += 1;
+      } else if (item.type === 'income') {
+        monthlyTimeline[mIdx].totalIncome += item.amount;
+        totalIncome += item.amount;
+      }
+    }
+  }
+
+  // Calculate netSavings & savingsRate for each month
+  for (const mStat of monthlyTimeline) {
+    mStat.netSavings = mStat.totalIncome - mStat.totalSpent;
+    mStat.savingsRate = mStat.totalIncome > 0
+      ? Math.round(((mStat.totalIncome - mStat.totalSpent) / mStat.totalIncome) * 100)
+      : 0;
+  }
+
+  // Active months count
+  const now = new Date();
+  const isCurrentYear = now.getFullYear() === year;
+  const activeMonthsCount = isCurrentYear ? Math.max(1, now.getMonth() + 1) : 12;
+
+  const averageMonthlySpent = Math.round(totalSpent / activeMonthsCount);
+  const averageMonthlyIncome = Math.round(totalIncome / activeMonthsCount);
+  const netSavings = totalIncome - totalSpent;
+  const savingsRate = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
+
+  // Highest and lowest expense months among months with activity
+  const evaluatedMonths = monthlyTimeline.filter((m) => (isCurrentYear ? m.month <= activeMonthsCount : true));
+  const monthsWithExpense = evaluatedMonths.filter((m) => m.totalSpent > 0);
+
+  const highestExpenseMonth = monthsWithExpense.length > 0
+    ? monthsWithExpense.reduce((max, m) => (m.totalSpent > max.totalSpent ? m : max), monthsWithExpense[0])
+    : null;
+
+  const lowestExpenseMonth = monthsWithExpense.length > 0
+    ? monthsWithExpense.reduce((min, m) => (m.totalSpent < min.totalSpent ? m : min), monthsWithExpense[0])
+    : null;
+
+  const monthsWithIncome = evaluatedMonths.filter((m) => m.totalIncome > 0);
+  const highestIncomeMonth = monthsWithIncome.length > 0
+    ? monthsWithIncome.reduce((max, m) => (m.totalIncome > max.totalIncome ? m : max), monthsWithIncome[0])
+    : null;
+
+  // Category breakdown
+  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+  const categoryBreakdown: CategoryStat[] = Object.entries(categoryTotals)
+    .map(([catId, data]) => {
+      const cat = categoryMap.get(catId);
+      const percentage = totalSpent > 0 ? Math.round((data.amount / totalSpent) * 1000) / 10 : 0;
+      return {
+        categoryId: catId,
+        categoryName: cat?.name || 'Lainnya',
+        categoryColor: cat?.color || '#94a3b8',
+        categoryIcon: cat?.icon || 'Tag',
+        amount: data.amount,
+        percentage,
+        count: data.count,
+        budget: (cat?.monthlyBudget || 0) * 12,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  // Member breakdown
+  const memberMap = new Map<string, FamilyMember>(members.map((m) => [m.id, m]));
+  const memberBreakdown: MemberStat[] = Object.entries(memberTotals)
+    .map(([memId, data]) => {
+      const mem = memberMap.get(memId);
+      const percentage = totalSpent > 0 ? Math.round((data.amount / totalSpent) * 1000) / 10 : 0;
+      return {
+        memberId: memId,
+        memberName: mem?.name || 'Anggota',
+        avatarColor: mem?.avatarColor || '#3b82f6',
+        amount: data.amount,
+        percentage,
+        count: data.count,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    year,
+    totalSpent,
+    totalIncome,
+    netSavings,
+    savingsRate,
+    averageMonthlySpent,
+    averageMonthlyIncome,
+    monthlyTimeline,
+    highestExpenseMonth,
+    lowestExpenseMonth,
+    highestIncomeMonth,
+    categoryBreakdown,
+    memberBreakdown,
+    topExpenseCategory: categoryBreakdown.length > 0 ? categoryBreakdown[0] : null,
+  };
+}
+
+/**
  * Calculate Budget Health
  */
 export function calculateBudgetStatus(spent: number, budget: number) {

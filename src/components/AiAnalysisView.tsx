@@ -45,6 +45,7 @@ interface ChatMessage {
 
 const PRESET_PROMPTS = [
   { label: '📊 Ringkasan Kesehatan Finansial', prompt: 'Berikan ringkasan dan analisis kesehatan keuangan saya bulan ini.' },
+  { label: '📅 Analisis 1 Tahun (Bulan per Bulan)', prompt: 'Berikan analisis tren finansial saya selama 1 tahun penuh, bandingkan performa bulan ke bulan, pos pengeluaran tertinggi, dan evaluasi tahunannya.' },
   { label: '🍔 Analisa Pengeluaran Makanan', prompt: 'Berapa total dan rata-rata pengeluaran makan minum saya bulan ini, serta evaluasinya?' },
   { label: '👥 Perbandingan Anggota Keluarga', prompt: 'Siapa anggota keluarga yang memiliki pengeluaran terbesar dan bagaimana distribusinya?' },
   { label: '🎯 Rekomendasi Menabung & Berhemat', prompt: 'Bagaimana cara berhemat bulan depan dan apa rekomendasi strategi menabung berdasarkan data pengeluaran saya?' },

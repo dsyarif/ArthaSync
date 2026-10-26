@@ -123,3 +123,15 @@ test('generateLocalAdvisorResponse answers questions about savings and recommend
   assert.ok(response.includes('Rasio 50/30/20'));
   assert.ok(response.includes('Langkah Konkret'));
 });
+
+test('generateLocalAdvisorResponse answers yearly queries using yearlySummary context', () => {
+  const ctx = buildFinancialContext(mockTransactions, mockCategories, mockGroup, mockDebts, 2026, 10);
+  const response = generateLocalAdvisorResponse('berikan analisa keuangan 1 tahun penuh', ctx);
+
+  assert.ok(response.includes('Analisis Keuangan Tahunan Periode 2026'));
+  assert.ok(response.includes('Total Pengeluaran 1 Tahun'));
+  assert.ok(response.includes('Rp 700.000'));
+  assert.ok(response.includes('Total Pemasukan 1 Tahun'));
+  assert.ok(response.includes('Rp 10.000.000'));
+  assert.ok(response.includes('Rincian Performa Bulan ke Bulan'));
+});

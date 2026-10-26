@@ -6,6 +6,7 @@ import {
   TrendingDown,
   TrendingUp,
   LineChart,
+  BarChart3,
   PieChart,
   Users,
   Printer,
@@ -20,9 +21,18 @@ import {
   X,
   CheckCircle2,
   ShieldAlert,
+  ArrowRight,
 } from 'lucide-react';
 import { AssetAccount, Category, FamilyGroup, Transaction } from '../types/finance';
-import { calculateMonthlyStats, formatIndonesianDate, formatRupiah, generateCsvData } from '../utils/finance';
+import {
+  calculateMonthlyStats,
+  calculateYearlyStats,
+  formatIndonesianDate,
+  formatRupiah,
+  generateCsvData,
+  MonthSummaryStat,
+  YearlyStatsResult,
+} from '../utils/finance';
 import { CategoryIcon } from './CategoryIcon';
 
 interface StatisticsViewProps {
@@ -51,6 +61,8 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
   const currentDate = new Date();
   const [internalYear, setInternalYear] = useState(currentDate.getFullYear());
   const [internalMonth, setInternalMonth] = useState(currentDate.getMonth() + 1); // 1-12
+  const [periodMode, setPeriodMode] = useState<'monthly' | 'yearly'>('monthly');
+  const [hoveredMonth, setHoveredMonth] = useState<MonthSummaryStat | null>(null);
   const [hoveredDay, setHoveredDay] = useState<{ day: number; amount: number; dateStr: string } | null>(null);
   const [selectedCategoryModal, setSelectedCategoryModal] = useState<Category | null>(null);
 
@@ -93,6 +105,22 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
       } else {
         setInternalMonth((m) => m + 1);
       }
+    }
+  };
+
+  const handlePrevYear = () => {
+    if (onChangeMonth) {
+      onChangeMonth(selectedYear - 1, selectedMonth);
+    } else {
+      setInternalYear((y) => y - 1);
+    }
+  };
+
+  const handleNextYear = () => {
+    if (onChangeMonth) {
+      onChangeMonth(selectedYear + 1, selectedMonth);
+    } else {
+      setInternalYear((y) => y + 1);
     }
   };
 
@@ -210,8 +238,67 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     ? Math.round(((stats.totalIncome - stats.totalSpent) / stats.totalIncome) * 100)
     : 0;
 
+  // Yearly Analytics Calculations (12 Bulan)
+  const yearlyStats: YearlyStatsResult = calculateYearlyStats(
+    groupTransactions,
+    categories,
+    currentGroup.members || [],
+    selectedYear
+  );
+
+  let cumulativeYearlyAngle = 0;
+  const yearlyDonutSlices = yearlyStats.categoryBreakdown.map((cat) => {
+    const angle = (cat.percentage / 100) * 360;
+    const startAngle = cumulativeYearlyAngle;
+    cumulativeYearlyAngle += angle;
+    return {
+      ...cat,
+      startAngle,
+      angle,
+    };
+  });
+
+  // Yearly Dual Bar Chart Calculations
+  const yearlyChartWidth = 800;
+  const yearlyChartHeight = 280;
+  const yearlyPadLeft = 65;
+  const yearlyPadRight = 25;
+  const yearlyPadTop = 25;
+  const yearlyPadBottom = 45;
+  const yearlyPlotWidth = yearlyChartWidth - yearlyPadLeft - yearlyPadRight;
+  const yearlyPlotHeight = yearlyChartHeight - yearlyPadTop - yearlyPadBottom;
+
+  const maxYearlyMonthValue = Math.max(
+    ...yearlyStats.monthlyTimeline.map((m) => Math.max(m.totalSpent, m.totalIncome)),
+    100000
+  ) * 1.15;
+
+  const monthSlotWidth = yearlyPlotWidth / 12;
+  const yearlyBarWidth = Math.min(18, Math.max(10, (monthSlotWidth - 14) / 2));
+  const yearlyBarGap = 3;
+  const barGroupWidth = yearlyBarWidth * 2 + yearlyBarGap;
+  const barGroupOffset = (monthSlotWidth - barGroupWidth) / 2;
+
+  // Trend line points for totalSpent across 12 months
+  const yearlyTrendPoints = yearlyStats.monthlyTimeline.map((m, idx) => {
+    const x = yearlyPadLeft + idx * monthSlotWidth + monthSlotWidth / 2;
+    const y = yearlyChartHeight - yearlyPadBottom - (m.totalSpent / maxYearlyMonthValue) * yearlyPlotHeight;
+    return { x, y, month: m };
+  });
+
+  const yearlyTrendLinePath = yearlyTrendPoints.reduce((acc, pt, index, arr) => {
+    if (index === 0) return `M ${pt.x} ${pt.y}`;
+    const prev = arr[index - 1];
+    const cpX1 = prev.x + (pt.x - prev.x) / 2;
+    const cpY1 = prev.y;
+    const cpX2 = prev.x + (pt.x - prev.x) / 2;
+    const cpY2 = pt.y;
+    return `${acc} C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${pt.x} ${pt.y}`;
+  }, '');
+
   // Transactions for selected category in modal
   const targetPrefix = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+  const dateFilterPrefix = periodMode === 'monthly' ? targetPrefix : `${selectedYear}-`;
   const categoryTransactions = selectedCategoryModal
     ? groupTransactions
         .filter(
@@ -219,7 +306,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             !t.isDeleted &&
             t.type === 'expense' &&
             t.categoryId === selectedCategoryModal.id &&
-            t.date.startsWith(targetPrefix)
+            t.date.startsWith(dateFilterPrefix)
         )
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
@@ -233,32 +320,63 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in pb-28 lg:pb-12">
-      {/* Month Selector Bar & Actions */}
+      {/* Top Period Mode Switcher & Navigation Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        {/* Left: Navigation (Month or Year) */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handlePrevMonth}
-            aria-label="Bulan Sebelumnya"
-            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+          {periodMode === 'monthly' ? (
+            <>
+              <button
+                onClick={handlePrevMonth}
+                aria-label="Bulan Sebelumnya"
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="font-bold text-sm text-slate-900 dark:text-white">
-              {monthNames[selectedMonth - 1]} {selectedYear}
-            </span>
-            <span className="text-xs text-slate-400">· {currentGroup.name}</span>
-          </div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="font-bold text-sm text-slate-900 dark:text-white">
+                  {monthNames[selectedMonth - 1]} {selectedYear}
+                </span>
+                <span className="text-xs text-slate-400">· {currentGroup.name}</span>
+              </div>
 
-          <button
-            onClick={handleNextMonth}
-            aria-label="Bulan Berikutnya"
-            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+              <button
+                onClick={handleNextMonth}
+                aria-label="Bulan Berikutnya"
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handlePrevYear}
+                aria-label="Tahun Sebelumnya"
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span className="font-bold text-sm text-slate-900 dark:text-white">
+                  Tahun Penuh {selectedYear}
+                </span>
+                <span className="text-xs text-slate-400">· {currentGroup.name}</span>
+              </div>
+
+              <button
+                onClick={handleNextYear}
+                aria-label="Tahun Berikutnya"
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
 
           {isMemberFiltered && activeMember && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold ml-2">
@@ -271,16 +389,47 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        {/* Center / Right: Period Switcher & Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mode Switcher Pill */}
+          <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setPeriodMode('monthly')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                periodMode === 'monthly'
+                  ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Bulanan</span>
+            </button>
+            <button
+              onClick={() => setPeriodMode('yearly')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                periodMode === 'yearly'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Tahunan (12 Bulan)</span>
+            </button>
+          </div>
+
           <button
             onClick={() => {
-              const csv = generateCsvData(groupTransactions, categories);
+              const exportTxs = periodMode === 'monthly'
+                ? groupTransactions.filter((t) => t.date.startsWith(targetPrefix))
+                : groupTransactions.filter((t) => t.date.startsWith(`${selectedYear}-`));
+              const csv = generateCsvData(exportTxs, categories);
               const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `Laporan-Keuangan-${monthNames[selectedMonth - 1]}-${selectedYear}.csv`;
+              a.download = periodMode === 'monthly'
+                ? `Laporan-Keuangan-${monthNames[selectedMonth - 1]}-${selectedYear}.csv`
+                : `Laporan-Keuangan-Tahunan-${selectedYear}.csv`;
               a.click();
               URL.revokeObjectURL(url);
             }}
@@ -292,7 +441,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
 
           <button
             onClick={onOpenPrintReport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Cetak Laporan</span>
@@ -300,54 +449,56 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
-            Total Pengeluaran
-          </span>
-          <div className="text-lg sm:text-xl font-bold font-mono text-red-600 dark:text-red-400 mt-1">
-            {formatRupiah(stats.totalSpent)}
-          </div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-            {stats.daysInMonth} hari total periode
-          </span>
-        </div>
+      {periodMode === 'monthly' ? (
+        <div className="space-y-6 animate-in fade-in">
+          {/* Summary KPI Cards Bulanan */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Total Pengeluaran
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-red-600 dark:text-red-400 mt-1">
+                {formatRupiah(stats.totalSpent)}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                {stats.daysInMonth} hari total periode
+              </span>
+            </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
-            Total Pemasukan
-          </span>
-          <div className="text-lg sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
-            {formatRupiah(stats.totalIncome)}
-          </div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-            Net: {formatRupiah(stats.netSavings)}
-          </span>
-        </div>
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Total Pemasukan
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                {formatRupiah(stats.totalIncome)}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                Net: {formatRupiah(stats.netSavings)}
+              </span>
+            </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
-            Rata-rata Harian
-          </span>
-          <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
-            {formatRupiah(stats.averageDaily)}
-          </div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">per hari aktif</span>
-        </div>
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Rata-rata Harian
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatRupiah(stats.averageDaily)}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">per hari aktif</span>
+            </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
-            Pengeluaran Tertinggi
-          </span>
-          <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
-            {highestDay ? formatRupiah(highestDay.amount) : 'Rp 0'}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Pengeluaran Tertinggi
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {highestDay ? formatRupiah(highestDay.amount) : 'Rp 0'}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                {highestDay ? `Tgl ${highestDay.day} ${monthNames[selectedMonth - 1]}` : 'Nihil'}
+              </span>
+            </div>
           </div>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-            {highestDay ? `Tgl ${highestDay.day} ${monthNames[selectedMonth - 1]}` : 'Nihil'}
-          </span>
-        </div>
-      </div>
 
       {/* Visual Chart 1: Daily Expense Line Chart (Diagram Garis Modern) */}
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
@@ -872,6 +1023,579 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
           </div>
         </div>
       </div>
+      </div>
+      ) : (
+        /* ========================================================= */
+        /* MODE TAHUNAN (12 BULAN)                                   */
+        /* ========================================================= */
+        <div className="space-y-6 animate-in fade-in">
+          {/* Summary KPI Cards Tahunan (4 Cards) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Total Pengeluaran Tahun {selectedYear}
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
+                {formatRupiah(yearlyStats.totalSpent)}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                Rata-rata: {formatRupiah(yearlyStats.averageMonthlySpent)} / bulan
+              </span>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Total Pemasukan Tahun {selectedYear}
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                {formatRupiah(yearlyStats.totalIncome)}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                Net: {formatRupiah(yearlyStats.netSavings)}
+              </span>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Rasio Tabungan Tahunan
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {yearlyStats.savingsRate}%
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
+                Akumulasi tabungan bersih
+              </span>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                Puncak Pengeluaran
+              </span>
+              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white mt-1 truncate">
+                {yearlyStats.highestExpenseMonth ? yearlyStats.highestExpenseMonth.monthName : 'Belum Ada'}
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1 truncate">
+                {yearlyStats.highestExpenseMonth ? formatRupiah(yearlyStats.highestExpenseMonth.totalSpent) : 'Nihil transaksi'}
+              </span>
+            </div>
+          </div>
+
+          {/* DIAGRAM UTAMA: DIAGRAM BULAN PER BULAN (12 BULAN JAN - DES) */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Diagram Arus Kas Bulan per Bulan ({selectedYear})</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Perbandingan pengeluaran vs pemasukan Januari sampai Desember. Arahkan kursor atau ketuk bulan untuk melihat detail.
+                </p>
+              </div>
+
+              {/* Diagram Legend */}
+              <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-xs bg-rose-500 shrink-0" />
+                  <span className="text-slate-600 dark:text-slate-300 text-[11px]">Pengeluaran</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-xs bg-emerald-500 shrink-0" />
+                  <span className="text-slate-600 dark:text-slate-300 text-[11px]">Pemasukan</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-4 h-0.5 bg-indigo-500 rounded-full shrink-0" />
+                  <span className="text-slate-600 dark:text-slate-300 text-[11px]">Tren Belanja</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Hovered Month Popover Banner */}
+            {hoveredMonth && (
+              <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/80 dark:border-indigo-800/80 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-900 dark:text-white text-sm">
+                    {hoveredMonth.monthName} {selectedYear}:
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                    Keluar: {formatRupiah(hoveredMonth.totalSpent)}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    Masuk: {formatRupiah(hoveredMonth.totalIncome)}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                      hoveredMonth.netSavings >= 0
+                        ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800'
+                        : 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'
+                    }`}
+                  >
+                    Net: {formatRupiah(hoveredMonth.netSavings)}
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    ({hoveredMonth.transactionCount} transaksi)
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (onChangeMonth) onChangeMonth(selectedYear, hoveredMonth.month);
+                    else setInternalMonth(hoveredMonth.month);
+                    setPeriodMode('monthly');
+                  }}
+                  className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  <span>Buka Detail Bulan Ini</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* SVG Dual Bar & Trend Line Chart */}
+            <div className="relative pt-2 pb-2">
+              <div className="w-full overflow-x-auto">
+                <div className="min-w-[700px] sm:min-w-full">
+                  <svg
+                    viewBox={`0 0 ${yearlyChartWidth} ${yearlyChartHeight}`}
+                    className="w-full h-64 sm:h-72 overflow-visible select-none"
+                  >
+                    <defs>
+                      <linearGradient id="expenseBarGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f43f5e" stopOpacity="1" />
+                        <stop offset="100%" stopColor="#e11d48" stopOpacity="0.85" />
+                      </linearGradient>
+                      <linearGradient id="incomeBarGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="1" />
+                        <stop offset="100%" stopColor="#059669" stopOpacity="0.85" />
+                      </linearGradient>
+                      <filter id="yearlyGlow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#6366f1" floodOpacity="0.4" />
+                      </filter>
+                    </defs>
+
+                    {/* Horizontal Guideline Marks */}
+                    {[0.25, 0.5, 0.75, 1].map((ratio) => {
+                      const y = yearlyChartHeight - yearlyPadBottom - ratio * yearlyPlotHeight;
+                      const val = maxYearlyMonthValue * ratio;
+                      return (
+                        <g key={ratio}>
+                          <line
+                            x1={yearlyPadLeft}
+                            y1={y}
+                            x2={yearlyChartWidth - yearlyPadRight}
+                            y2={y}
+                            stroke="currentColor"
+                            className="text-slate-100 dark:text-slate-800"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={yearlyPadLeft - 8}
+                            y={y + 3}
+                            textAnchor="end"
+                            className="fill-slate-400 text-[9px] font-mono select-none"
+                          >
+                            {formatRupiah(val, { compact: true })}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Base X Axis */}
+                    <line
+                      x1={yearlyPadLeft}
+                      y1={yearlyChartHeight - yearlyPadBottom}
+                      x2={yearlyChartWidth - yearlyPadRight}
+                      y2={yearlyChartHeight - yearlyPadBottom}
+                      stroke="currentColor"
+                      className="text-slate-200 dark:text-slate-800"
+                      strokeWidth="1.5"
+                    />
+
+                    {/* Dual Bars for each month */}
+                    {yearlyStats.monthlyTimeline.map((m, idx) => {
+                      const isHovered = hoveredMonth?.month === m.month;
+                      const isSelected = selectedMonth === m.month;
+                      const slotLeft = yearlyPadLeft + idx * monthSlotWidth;
+                      const groupLeft = slotLeft + barGroupOffset;
+
+                      const expHeight = Math.max(m.totalSpent > 0 ? 3 : 0, (m.totalSpent / maxYearlyMonthValue) * yearlyPlotHeight);
+                      const expY = yearlyChartHeight - yearlyPadBottom - expHeight;
+
+                      const incHeight = Math.max(m.totalIncome > 0 ? 3 : 0, (m.totalIncome / maxYearlyMonthValue) * yearlyPlotHeight);
+                      const incY = yearlyChartHeight - yearlyPadBottom - incHeight;
+
+                      return (
+                        <g
+                          key={m.month}
+                          className="cursor-pointer"
+                          onMouseEnter={() => setHoveredMonth(m)}
+                          onMouseLeave={() => setHoveredMonth(null)}
+                          onClick={() => {
+                            if (onChangeMonth) onChangeMonth(selectedYear, m.month);
+                            else setInternalMonth(m.month);
+                            setPeriodMode('monthly');
+                          }}
+                        >
+                          {/* Translucent Highlight Column on Hover */}
+                          <rect
+                            x={slotLeft + 2}
+                            y={yearlyPadTop}
+                            width={monthSlotWidth - 4}
+                            height={yearlyPlotHeight}
+                            rx={8}
+                            fill="currentColor"
+                            className={`transition-colors duration-150 ${
+                              isHovered
+                                ? 'text-indigo-500/15'
+                                : isSelected
+                                ? 'text-slate-500/10'
+                                : 'text-transparent hover:text-slate-500/5'
+                            }`}
+                          />
+
+                          {/* Expense Bar (Rose) */}
+                          {m.totalSpent > 0 && (
+                            <rect
+                              x={groupLeft}
+                              y={expY}
+                              width={yearlyBarWidth}
+                              height={expHeight}
+                              rx={3}
+                              fill="url(#expenseBarGrad)"
+                              className={`transition-all duration-200 ${isHovered ? 'filter drop-shadow-[0_2px_4px_rgba(244,63,94,0.4)] scale-y-105' : ''}`}
+                            />
+                          )}
+
+                          {/* Income Bar (Emerald) */}
+                          {m.totalIncome > 0 && (
+                            <rect
+                              x={groupLeft + yearlyBarWidth + yearlyBarGap}
+                              y={incY}
+                              width={yearlyBarWidth}
+                              height={incHeight}
+                              rx={3}
+                              fill="url(#incomeBarGrad)"
+                              className={`transition-all duration-200 ${isHovered ? 'filter drop-shadow-[0_2px_4px_rgba(16,185,129,0.4)] scale-y-105' : ''}`}
+                            />
+                          )}
+
+                          {/* Bottom Month Label */}
+                          <text
+                            x={slotLeft + monthSlotWidth / 2}
+                            y={yearlyChartHeight - yearlyPadBottom + 18}
+                            textAnchor="middle"
+                            className={`text-[10px] select-none transition-colors ${
+                              isHovered
+                                ? 'fill-indigo-600 dark:fill-indigo-400 font-bold'
+                                : isSelected
+                                ? 'fill-emerald-600 dark:fill-emerald-400 font-bold'
+                                : 'fill-slate-500 dark:fill-slate-400 font-medium'
+                            }`}
+                          >
+                            {m.monthShortName}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Trend Line (Spline) connecting Expense Points */}
+                    {yearlyTrendLinePath && (
+                      <path
+                        d={yearlyTrendLinePath}
+                        fill="none"
+                        stroke="#6366f1"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#yearlyGlow)"
+                        className="transition-all duration-300 opacity-90"
+                      />
+                    )}
+
+                    {/* Trend Points */}
+                    {yearlyTrendPoints.map((pt) => {
+                      const isHovered = hoveredMonth?.month === pt.month.month;
+                      if (pt.month.totalSpent === 0) return null;
+                      return (
+                        <circle
+                          key={pt.month.month}
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isHovered ? 5.5 : 3.5}
+                          fill="#6366f1"
+                          stroke="#ffffff"
+                          strokeWidth={isHovered ? 2.5 : 1.5}
+                          className="transition-all duration-150 pointer-events-none"
+                        />
+                      );
+                    })}
+                  </svg>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] text-slate-400 mt-2 px-2">
+                <span>Januari {selectedYear}</span>
+                <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                  💡 Ketuk salah satu diagram bulan di atas untuk membuka rincian bulanan
+                </span>
+                <span>Desember {selectedYear}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* GRID KARTU PERFORMA 12 BULAN (Januari - Desember) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Rincian Performa Bulan ke Bulan (12 Bulan)</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ringkasan nominal pengeluaran, pemasukan, dan saldo kas bersih setiap bulan
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {yearlyStats.monthlyTimeline.map((m) => {
+                const hasActivity = m.totalSpent > 0 || m.totalIncome > 0;
+                const isSurplus = m.netSavings >= 0;
+                const isSelected = selectedMonth === m.month;
+
+                return (
+                  <div
+                    key={m.month}
+                    onClick={() => {
+                      if (onChangeMonth) onChangeMonth(selectedYear, m.month);
+                      else setInternalMonth(m.month);
+                      setPeriodMode('monthly');
+                    }}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-2.5 ${
+                      isSelected
+                        ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 shadow-sm ring-2 ring-indigo-500/20'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs hover:scale-[1.01]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white">
+                        {m.monthName}
+                      </span>
+                      {hasActivity ? (
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                            isSurplus
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {isSurplus ? 'Surplus' : 'Defisit'}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-medium text-slate-400">Nihil</span>
+                      )}
+                    </div>
+
+                    {/* Progress bars: Expense (Rose) vs Income (Emerald) */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">Keluar:</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+                          {formatRupiah(m.totalSpent)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">Masuk:</span>
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatRupiah(m.totalIncome)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Net:</span>
+                      <span
+                        className={`font-mono font-bold ${
+                          isSurplus ? 'text-teal-600 dark:text-teal-400' : 'text-rose-600 dark:text-rose-400'
+                        }`}
+                      >
+                        {formatRupiah(m.netSavings)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline pt-0.5">
+                      <span>{m.transactionCount} transaksi</span>
+                      <span className="flex items-center gap-0.5">
+                        <span>Buka</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DISTRIBUSI KATEGORI PENGELUARAN 1 TAHUN & KONTRIBUSI ANGGOTA */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Category Breakdown 1 Tahun */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <PieChart className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Distribusi Kategori Pengeluaran Tahun {selectedYear}</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Pos pengeluaran terbesar sepanjang 1 tahun penuh
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
+                  {yearlyStats.categoryBreakdown.length} Kategori
+                </span>
+              </div>
+
+              {yearlyStats.categoryBreakdown.length === 0 ? (
+                <div className="py-16 text-center text-xs text-slate-400">
+                  Tidak ada catatan pengeluaran pada tahun ini.
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-center gap-6 pt-2">
+                  {/* SVG Donut */}
+                  <div className="relative w-44 h-44 flex-shrink-0">
+                    <svg viewBox="0 0 200 200" className="w-full h-full transform -rotate-90">
+                      {yearlyDonutSlices.map((slice) => (
+                        <path
+                          key={slice.categoryId}
+                          d={createArc(slice.startAngle, slice.angle, 90, 54)}
+                          fill={slice.categoryColor}
+                          className="hover:opacity-90 transition-opacity cursor-pointer"
+                          onClick={() => {
+                            const targetCat = categories.find((c) => c.id === slice.categoryId);
+                            if (targetCat) setSelectedCategoryModal(targetCat);
+                          }}
+                        >
+                          <title>{`${slice.categoryName}: ${slice.percentage}% (${formatRupiah(slice.amount)})`}</title>
+                        </path>
+                      ))}
+                    </svg>
+
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Total 1 Thn
+                      </span>
+                      <span className="text-xs font-extrabold font-mono text-slate-900 dark:text-white">
+                        {formatRupiah(yearlyStats.totalSpent, { compact: true })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Category Clickable List */}
+                  <div className="flex-1 w-full space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {yearlyStats.categoryBreakdown.map((cat) => {
+                      const categoryObj = categories.find((c) => c.id === cat.categoryId);
+                      return (
+                        <button
+                          key={cat.categoryId}
+                          type="button"
+                          onClick={() => categoryObj && setSelectedCategoryModal(categoryObj)}
+                          className="w-full text-left p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/60 transition-all group cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 truncate">
+                              <div
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: cat.categoryColor }}
+                              />
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                {cat.categoryName}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 font-mono">
+                              <span className="font-bold text-slate-900 dark:text-white">
+                                {formatRupiah(cat.amount)}
+                              </span>
+                              <span className="text-[10px] text-slate-400 w-10 text-right">
+                                {cat.percentage}%
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Member Breakdown 1 Tahun */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Kontribusi Anggota Keluarga Tahun {selectedYear}</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Proporsi belanja masing-masing anggota selama 1 tahun penuh
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
+                  {yearlyStats.memberBreakdown.length} Anggota
+                </span>
+              </div>
+
+              {yearlyStats.memberBreakdown.length === 0 ? (
+                <div className="py-16 text-center text-xs text-slate-400">
+                  Tidak ada catatan anggota pada tahun ini.
+                </div>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  {yearlyStats.memberBreakdown.map((mem) => (
+                    <div
+                      key={mem.memberId}
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-xs"
+                            style={{ backgroundColor: mem.avatarColor }}
+                          >
+                            {mem.memberName.charAt(0)}
+                          </div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {mem.memberName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            {formatRupiah(mem.amount)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans">
+                            ({mem.percentage}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100, mem.percentage)}%`,
+                            backgroundColor: mem.avatarColor,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Category Expense Transactions Detail Drilldown */}
       {selectedCategoryModal && (
@@ -891,7 +1615,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                     {selectedCategoryModal.name}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Periode: {monthNames[selectedMonth - 1]} {selectedYear} · {categoryTransactions.length} Transaksi
+                    Periode: {periodMode === 'monthly' ? `${monthNames[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear} (12 Bulan)`} · {categoryTransactions.length} Transaksi
                   </p>
                 </div>
               </div>
@@ -917,12 +1641,16 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             <div className="p-5 overflow-y-auto flex-1 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800/60">
               {categoryTransactions.length === 0 ? (
                 <div className="py-12 text-center text-xs text-slate-400">
-                  Tidak ada transaksi pengeluaran pada kategori ini untuk bulan {monthNames[selectedMonth - 1]} {selectedYear}.
+                  Tidak ada transaksi pengeluaran pada kategori ini untuk {periodMode === 'monthly' ? `bulan ${monthNames[selectedMonth - 1]} ${selectedYear}` : `tahun ${selectedYear}`}.
                 </div>
               ) : (
                 categoryTransactions.map((tx) => {
                   const member = memberMap.get(tx.memberId);
-                  const account = tx.accountId ? accountMap.get(tx.accountId) : undefined;
+                  const account = (tx as any).accountId
+                    ? accountMap.get((tx as any).accountId)
+                    : (tx as any).assetId
+                    ? accountMap.get((tx as any).assetId)
+                    : undefined;
 
                   return (
                     <div

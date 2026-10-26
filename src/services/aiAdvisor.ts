@@ -1,5 +1,5 @@
 import { AssetAccount, Category, DebtRecord, FamilyGroup, Transaction } from '../types/finance';
-import { calculateMonthlyStats, formatRupiah, getEligibleAssetsForMember } from '../utils/finance';
+import { calculateMonthlyStats, calculateYearlyStats, formatRupiah, getEligibleAssetsForMember, MonthSummaryStat } from '../utils/finance';
 import { getEffectiveGeminiApiKey } from './aiParser';
 
 export interface FinancialContext {
@@ -54,6 +54,25 @@ export interface FinancialContext {
     type: string;
     category: string;
   }[];
+  yearlySummary?: {
+    year: number;
+    totalSpent: number;
+    totalIncome: number;
+    netSavings: number;
+    savingsRate: number;
+    averageMonthlySpent: number;
+    highestExpenseMonthName?: string;
+    highestExpenseMonthAmount?: number;
+    lowestExpenseMonthName?: string;
+    lowestExpenseMonthAmount?: number;
+    monthlyTimeline: {
+      month: number;
+      monthName: string;
+      totalSpent: number;
+      totalIncome: number;
+      netSavings: number;
+    }[];
+  };
 }
 
 const INDONESIAN_MONTHS = [
@@ -216,6 +235,33 @@ export function buildFinancialContext(
       netBalance: totalPiutang - totalUtang,
     },
     recentTransactions,
+    yearlySummary: (() => {
+      const yStats = calculateYearlyStats(
+        groupTransactions,
+        categories || [],
+        safeGroup.members || [],
+        year
+      );
+      return {
+        year,
+        totalSpent: yStats.totalSpent,
+        totalIncome: yStats.totalIncome,
+        netSavings: yStats.netSavings,
+        savingsRate: yStats.savingsRate,
+        averageMonthlySpent: yStats.averageMonthlySpent,
+        highestExpenseMonthName: yStats.highestExpenseMonth?.monthName,
+        highestExpenseMonthAmount: yStats.highestExpenseMonth?.totalSpent,
+        lowestExpenseMonthName: yStats.lowestExpenseMonth?.monthName,
+        lowestExpenseMonthAmount: yStats.lowestExpenseMonth?.totalSpent,
+        monthlyTimeline: yStats.monthlyTimeline.map((m) => ({
+          month: m.month,
+          monthName: m.monthName,
+          totalSpent: m.totalSpent,
+          totalIncome: m.totalIncome,
+          netSavings: m.netSavings,
+        })),
+      };
+    })(),
   };
 }
 
@@ -305,7 +351,33 @@ ${overBudgetCats.length > 0 ? `#### ⚠️ Pos yang Melebihi Anggaran:\n${overBu
 3. Jaga pengeluaran harian rata-rata tetap di bawah **${formatRupiah(ctx.avgDailyExpense)}** per hari.`;
   }
 
-  // 5. Default / Analisa Umum Keuangan
+  // 5. Analisa 1 Tahun Penuh (Bulan per Bulan)
+  if (q.includes('tahun') || q.includes('setahun') || q.includes('tahunan') || q.includes('1 tahun')) {
+    if (ctx.yearlySummary) {
+      const y = ctx.yearlySummary;
+      const monthRows = y.monthlyTimeline
+        .filter((m) => m.totalSpent > 0 || m.totalIncome > 0)
+        .map((m) => `- **${m.monthName}**: Pengeluaran **${formatRupiah(m.totalSpent)}** | Pemasukan **${formatRupiah(m.totalIncome)}** (Net: **${formatRupiah(m.netSavings)}**)`)
+        .join('\n');
+
+      return `### 📊 Analisis Keuangan Tahunan Periode ${y.year} (${ctx.groupName})
+- **Total Pengeluaran 1 Tahun**: **${formatRupiah(y.totalSpent)}**
+- **Total Pemasukan 1 Tahun**: **${formatRupiah(y.totalIncome)}**
+- **Arus Kas Bersih (Net Tabungan)**: **${formatRupiah(y.netSavings)}** (Rasio Tabungan: **${y.savingsRate}%**)
+- **Rata-rata Pengeluaran per Bulan**: Sekitar **${formatRupiah(y.averageMonthlySpent)}** / bulan
+${y.highestExpenseMonthName ? `- **Bulan Pengeluaran Tertinggi**: **${y.highestExpenseMonthName}** (${formatRupiah(y.highestExpenseMonthAmount || 0)})` : ''}
+${y.lowestExpenseMonthName ? `- **Bulan Pengeluaran Terhemat**: **${y.lowestExpenseMonthName}** (${formatRupiah(y.lowestExpenseMonthAmount || 0)})` : ''}
+
+#### 📈 Rincian Performa Bulan ke Bulan:
+${monthRows || '- *Belum ada riwayat transaksi aktif yang tercatat pada tahun ini.*'}
+
+**Rekomendasi Strategis Tahunan**:
+1. Evaluasi bulan dengan pengeluaran puncak untuk mengidentifikasi pos musiman (hari raya, liburan keluarga, tagihan tahunan).
+2. Sisihkan *sinking fund* (dana cadangan terencana) di bulan-bulan surplus agar stabilitas kas keluarga tetap terjaga sepanjang tahun.`;
+    }
+  }
+
+  // 6. Default / Analisa Umum Keuangan
   const topCat = ctx.categoriesBreakdown[0];
   return `### 📊 Ringkasan Eksekutif Keuangan (${ctx.monthName} ${ctx.year})
 
@@ -364,57 +436,70 @@ Pertanyaan / Prompt Pengguna:
 
 Jawablah pertanyaan tersebut berdasarkan data keuangan di atas.`;
 
-  // Prioritaskan Gemini 3.8 Flash sesuai permintaan pengguna, dengan fallback cerdas ke model aktif
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+  // Gunakan gemini-3.5-flash sebagai model stabil utama (respons ~4 detik), dengan fallback ke gemini-2.5-flash dan gemini-3.8-flash
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.8-flash'];
   let lastErrorMessage = '';
 
   for (const model of modelsToTry) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+    // Coba hingga 2 kali per model (retry cepat jika Google mengalami lonjakan antrean 503)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+        const controller = new AbortController();
+        const timeoutMs = 25000; // 25s timeout untuk analisa mendalam
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: `${systemInstruction}\n\n${prompt}` }],
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: `${systemInstruction}\n\n${prompt}` }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              thinkingConfig: {
+                thinkingBudget: 0,
+              },
             },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-          },
-        }),
-        signal: controller.signal,
-      });
+          }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.warn(`Gemini advisor model ${model} returned status ${response.status}: ${errorText.slice(0, 150)}`);
-        lastErrorMessage = `Model ${model} (${response.status})`;
-        continue;
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          console.warn(`Gemini advisor model ${model} (attempt ${attempt}) returned ${response.status}: ${errorText.slice(0, 150)}`);
+          lastErrorMessage = `Model ${model} (${response.status})`;
+
+          // Jika 503 (High Demand spike), tunggu 1.2 detik lalu coba sekali lagi
+          if (response.status === 503 && attempt === 1) {
+            await new Promise((r) => setTimeout(r, 1200));
+            continue;
+          }
+          break; // Pindah ke model berikutnya jika bukan 503 atau percobaan kedua gagal
+        }
+
+        const data = await response.json();
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!reply) {
+          break;
+        }
+
+        return {
+          answer: reply,
+          source: 'gemini',
+          modelUsed: model,
+        };
+      } catch (err: any) {
+        console.warn(`Gemini attempt with ${model} (attempt ${attempt}) failed:`, err?.message || err);
+        lastErrorMessage = err?.message || 'Koneksi timeout';
+        break; // Lanjut ke model berikutnya
       }
-
-      const data = await response.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!reply) {
-        continue;
-      }
-
-      return {
-        answer: reply,
-        source: 'gemini',
-        modelUsed: model,
-      };
-    } catch (err: any) {
-      console.warn(`Gemini attempt with ${model} failed:`, err?.message || err);
-      lastErrorMessage = err?.message || 'Koneksi timeout';
-      continue;
     }
   }
 

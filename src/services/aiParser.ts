@@ -612,41 +612,50 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
   "date": string // Format YYYY-MM-DD
 }`;
 
-  // Prioritaskan Gemini 3.8 Flash, dengan cadangan ke model aktif (gemini-2.5-flash / gemini-3.5-flash)
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+  // Gunakan gemini-3.5-flash sebagai model cepat & stabil (~1.5s), cadangan gemini-2.5-flash & gemini-3.8-flash
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.8-flash'];
 
   for (const model of modelsToTry) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000); // 9s timeout
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+        const controller = new AbortController();
+        const timeoutMs = 15000; // 15s timeout
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json',
-          },
-        }),
-        signal: controller.signal,
-      });
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: 'application/json',
+              thinkingConfig: {
+                thinkingBudget: 0,
+              },
+            },
+          }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        console.warn(`Gemini voice parser model ${model} error: ${response.status} ${response.statusText}. Trying next...`);
-        continue;
-      }
+        if (!response.ok) {
+          console.warn(`Gemini voice parser model ${model} (attempt ${attempt}) error: ${response.status} ${response.statusText}`);
+          if (response.status === 503 && attempt === 1) {
+            await new Promise((r) => setTimeout(r, 1200));
+            continue;
+          }
+          break;
+        }
 
-      const data = await response.json();
-      const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const data = await response.json();
+        const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      if (!candidateText) {
-        continue;
-      }
+        if (!candidateText) {
+          break;
+        }
 
       // Clean JSON markdown if wrapped
       const cleanedJsonStr = candidateText.replace(/^```json/i, '').replace(/```$/i, '').trim();
@@ -676,9 +685,10 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
         source: 'gemini',
         rawInput: cleanInput,
       };
-    } catch (modelErr) {
-      console.warn(`Gemini attempt with ${model} failed:`, modelErr);
-      continue;
+      } catch (modelErr) {
+        console.warn(`Gemini attempt with ${model} failed:`, modelErr);
+        break;
+      }
     }
   }
 
@@ -687,7 +697,7 @@ Kembalikan HANYA objek JSON dengan schema berikut (tanpa markdown backtick):
 }
 
 /**
- * Test Gemini API connection
+ * Test Gemini API connection and verify model availability
  */
 export async function testGeminiConnection(apiKey: string): Promise<{ success: boolean; message: string }> {
   const effectiveKey = (apiKey || getEffectiveGeminiApiKey()).trim();
@@ -695,40 +705,36 @@ export async function testGeminiConnection(apiKey: string): Promise<{ success: b
     return { success: false, message: 'API Key tidak boleh kosong.' };
   }
 
-  const models = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-1.5-flash'];
-  let lastErrMsg = '';
+  try {
+    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${effectiveKey}&pageSize=50`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const listRes = await fetch(listUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: 'Balas dengan satu kata: "OK"' }] }],
-          generationConfig: { maxOutputTokens: 5 },
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        return {
-          success: true,
-          message: `Koneksi ke Google Gemini AI berhasil (${model})! Model aktif & siap digunakan.`,
-        };
-      } else {
-        const errData = await response.json().catch(() => ({}));
-        lastErrMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-      }
-    } catch (err: any) {
-      lastErrMsg = err.message || 'Koneksi internet bermasalah / timeout';
+    if (!listRes.ok) {
+      const errData = await listRes.json().catch(() => ({}));
+      const errMsg = errData.error?.message || `HTTP ${listRes.status} ${listRes.statusText}`;
+      return { success: false, message: `Gagal terhubung: ${errMsg}` };
     }
-  }
 
-  return { success: false, message: `Gagal terhubung: ${lastErrMsg}` };
+    const listData = await listRes.json().catch(() => ({}));
+    const availableModelNames: string[] = (listData.models || []).map((m: any) => m.name || '');
+    const has38Flash = availableModelNames.some((n) => n.includes('gemini-3.8-flash'));
+    const has25Flash = availableModelNames.some((n) => n.includes('gemini-2.5-flash'));
+
+    const activeModelName = has38Flash
+      ? 'gemini-3.8-flash'
+      : has25Flash
+      ? 'gemini-2.5-flash'
+      : (availableModelNames[0]?.replace('models/', '') || 'gemini');
+
+    return {
+      success: true,
+      message: `Koneksi ke Google Gemini AI berhasil! Model ${activeModelName} terdaftar & siap digunakan.`,
+    };
+  } catch (err: any) {
+    return { success: false, message: `Gagal terhubung: ${err.message || 'Koneksi internet bermasalah / timeout'}` };
+  }
 }
