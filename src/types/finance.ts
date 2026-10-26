@@ -32,11 +32,12 @@ export interface AssetAccount {
   name: string;
   type: AssetType;
   institution: string;
-  balance: number; // in IDR
+  balance: number; // in IDR (total balance)
   color: string;
   icon?: string;
   accountNumber?: string;
   memberId?: string; // Optional: specific member owner, or undefined/'joint' for Saldo Bersama
+  memberBalances?: Record<string, number>; // Optional: nominal per anggota keluarga { [memberId: string]: number }
   updatedAt: number;
 }
 

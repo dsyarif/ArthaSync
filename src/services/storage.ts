@@ -194,7 +194,7 @@ export class StorageService {
     this.notify();
   }
 
-  public static adjustAssetBalance(groupId: string, assetId: string | undefined, delta: number) {
+  public static adjustAssetBalance(groupId: string, assetId: string | undefined, delta: number, memberId?: string) {
     if (!assetId || delta === 0) return;
     const groups = this.getGroups();
     const grpIndex = groups.findIndex((g) => g.id === groupId);
@@ -205,12 +205,20 @@ export class StorageService {
     const astIndex = assets.findIndex((a) => a.id === assetId);
     if (astIndex === -1) return;
 
-    const oldBal = typeof assets[astIndex].balance === 'number' ? assets[astIndex].balance : 0;
+    const targetAst = assets[astIndex];
+    const oldBal = typeof targetAst.balance === 'number' ? targetAst.balance : 0;
     const newBal = oldBal + delta;
 
+    let newMemberBalances = targetAst.memberBalances ? { ...targetAst.memberBalances } : undefined;
+    if (newMemberBalances && memberId) {
+      const oldMemBal = newMemberBalances[memberId] ?? 0;
+      newMemberBalances[memberId] = oldMemBal + delta;
+    }
+
     assets[astIndex] = {
-      ...assets[astIndex],
+      ...targetAst,
       balance: newBal,
+      memberBalances: newMemberBalances,
       updatedAt: Date.now(),
     };
 
@@ -255,7 +263,7 @@ export class StorageService {
 
     // Update asset balance: income adds, expense subtracts
     const delta = newTx.type === 'income' ? newTx.amount : -newTx.amount;
-    this.adjustAssetBalance(newTx.groupId, newTx.assetId, delta);
+    this.adjustAssetBalance(newTx.groupId, newTx.assetId, delta, newTx.memberId);
 
     if (isSupabaseConfigured()) {
       SupabaseSyncService.saveTransaction(newTx).catch((err) => {
@@ -279,7 +287,7 @@ export class StorageService {
 
     // Revert old transaction's impact on old asset
     const oldDelta = existing.type === 'income' ? existing.amount : -existing.amount;
-    this.adjustAssetBalance(existing.groupId, existing.assetId, -oldDelta);
+    this.adjustAssetBalance(existing.groupId, existing.assetId, -oldDelta, existing.memberId);
 
     const updatedTx: Transaction = {
       ...existing,
@@ -291,7 +299,7 @@ export class StorageService {
 
     // Apply new transaction's impact on new asset
     const newDelta = updatedTx.type === 'income' ? updatedTx.amount : -updatedTx.amount;
-    this.adjustAssetBalance(updatedTx.groupId, updatedTx.assetId, newDelta);
+    this.adjustAssetBalance(updatedTx.groupId, updatedTx.assetId, newDelta, updatedTx.memberId);
 
     current[index] = updatedTx;
     this.saveTransactions(current);
@@ -376,7 +384,7 @@ export class StorageService {
 
     // Revert asset balance
     const oldDelta = item.type === 'income' ? item.amount : -item.amount;
-    this.adjustAssetBalance(item.groupId, item.assetId, -oldDelta);
+    this.adjustAssetBalance(item.groupId, item.assetId, -oldDelta, item.memberId);
 
     // Filter out locally immediately
     const filtered = current.filter((t) => t.id !== id);

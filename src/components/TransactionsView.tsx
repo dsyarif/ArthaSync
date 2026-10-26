@@ -25,13 +25,18 @@ import {
   Tag,
   Mic,
   Sparkles,
+  Table,
+  ChevronDown,
+  CheckCircle2,
 } from 'lucide-react';
-import { Category, FamilyGroup, Transaction } from '../types/finance';
+import { Category, FamilyGroup, Transaction, TransactionType, PaymentMethod } from '../types/finance';
 import {
   filterTransactions,
   formatIndonesianDate,
+  formatSpreadsheetDate,
   formatRupiah,
   generateCsvData,
+  getAssetBalanceForMember,
   getEligibleAssetsForMember,
   getMemberColorTheme,
   groupTransactionsByDate,
@@ -83,9 +88,42 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [filterByMonth, setFilterByMonth] = useState(true);
   const [showQuickAddBar, setShowQuickAddBar] = useState(false);
-  const [viewMode, setViewMode] = useState<'detail' | 'simple'>('detail');
+  const [viewMode, setViewMode] = useState<'spreadsheet' | 'detail' | 'simple'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('arthasync_tx_view_mode');
+      if (saved === 'spreadsheet' || saved === 'detail' || saved === 'simple') {
+        return saved;
+      }
+      return window.innerWidth >= 768 ? 'spreadsheet' : 'detail';
+    }
+    return 'spreadsheet';
+  });
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [selectedDetailTx, setSelectedDetailTx] = useState<Transaction | null>(null);
+
+  // Toast / Feedback states
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  // Spreadsheet interactive cell dropdown state
+  const [activeDropdown, setActiveDropdown] = useState<{
+    txId: string;
+    field: 'member' | 'category' | 'asset';
+  } | null>(null);
+
+  // Spreadsheet inline editing state for Nominal & Uraian
+  const [spreadsheetEditingId, setSpreadsheetEditingId] = useState<string | null>(null);
+  const [spreadsheetTempAmount, setSpreadsheetTempAmount] = useState('');
+  const [spreadsheetTempDesc, setSpreadsheetTempDesc] = useState('');
+
+  // Horizontal Quick Input Row state (Pinned in Spreadsheet)
+  const [quickRowDate, setQuickRowDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [quickRowMemberId, setQuickRowMemberId] = useState('');
+  const [quickRowCategoryId, setQuickRowCategoryId] = useState('');
+  const [quickRowAssetId, setQuickRowAssetId] = useState('');
+  const [quickRowAmount, setQuickRowAmount] = useState('');
+  const [quickRowDesc, setQuickRowDesc] = useState('');
+  const [quickRowType, setQuickRowType] = useState<TransactionType>('expense');
+  const [quickRowSuccess, setQuickRowSuccess] = useState(false);
 
   // Category frequency calculation: prioritize most frequently used categories
   const categoryUsageCount = React.useMemo(() => {
@@ -107,7 +145,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     });
   }, [categories, categoryUsageCount]);
 
-  // Inline editing state
+  // Inline editing state (for card views)
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const [inlineDate, setInlineDate] = useState('');
   const [inlineAmount, setInlineAmount] = useState('');
@@ -133,6 +171,69 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     if (filterByMonth && !t.date.startsWith(monthPrefix)) return false;
     return true;
   });
+
+  // Dynamic filter lists: Category list filtered by selectedType and selectedAsset!
+  const availableCategoriesForFilter = React.useMemo(() => {
+    return sortedCategories.filter((cat) => {
+      // 1. Filter by transaction type if selected (expense vs income)
+      if (selectedType === 'expense' && cat.type === 'income') return false;
+      if (selectedType === 'income' && cat.type === 'expense') return false;
+
+      // 2. Filter by selected asset if selected
+      if (selectedAsset !== 'all') {
+        const hasTxInAsset = baseTransactions.some(
+          (t) => t.categoryId === cat.id && (t.assetId === selectedAsset || (!t.assetId && (currentGroup.assets || [])[0]?.id === selectedAsset))
+        );
+        if (!hasTxInAsset && baseTransactions.length > 0) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [sortedCategories, selectedType, selectedAsset, baseTransactions, currentGroup.assets]);
+
+  // Dynamic filter lists: Asset list filtered by member, type, and category!
+  const availableAssetsForFilter = React.useMemo(() => {
+    const allAssets = currentGroup.assets || [];
+    const memberToFilter = selectedMemberFilter && selectedMemberFilter !== 'all' ? selectedMemberFilter : undefined;
+    const eligible = getEligibleAssetsForMember(allAssets, memberToFilter);
+
+    return eligible.filter((ast) => {
+      // If type is selected (expense vs income), check if asset has transactions of that type
+      if (selectedType !== 'all') {
+        const hasTxWithType = baseTransactions.some(
+          (t) => (t.assetId === ast.id || (!t.assetId && allAssets[0]?.id === ast.id)) && t.type === selectedType
+        );
+        if (!hasTxWithType && baseTransactions.length > 0) {
+          return false;
+        }
+      }
+      // If category is selected, filter to assets that have transactions in this category
+      if (selectedCategory !== 'all') {
+        const hasTxWithCat = baseTransactions.some(
+          (t) => (t.assetId === ast.id || (!t.assetId && allAssets[0]?.id === ast.id)) && t.categoryId === selectedCategory
+        );
+        if (!hasTxWithCat && baseTransactions.length > 0) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [currentGroup.assets, selectedMemberFilter, selectedType, selectedCategory, baseTransactions]);
+
+  // Auto-reset category filter if no longer in available list
+  React.useEffect(() => {
+    if (selectedCategory !== 'all' && !availableCategoriesForFilter.some((c) => c.id === selectedCategory)) {
+      setSelectedCategory('all');
+    }
+  }, [availableCategoriesForFilter, selectedCategory]);
+
+  // Auto-reset asset filter if no longer in available list
+  React.useEffect(() => {
+    if (selectedAsset !== 'all' && !availableAssetsForFilter.some((a) => a.id === selectedAsset)) {
+      setSelectedAsset('all');
+    }
+  }, [availableAssetsForFilter, selectedAsset]);
 
   // Filter items for current group (Member filter strictly controlled by navbar)
   const filtered = filterTransactions(baseTransactions, {
@@ -239,21 +340,138 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     setInlineEditingId(null);
   };
 
-  const handleSaveInlineEdit = (txId: string) => {
-    const num = parseRupiahInput(inlineAmount);
-    if (num <= 0 || !inlineDesc.trim()) return;
+  // Flattened & sorted items for spreadsheet view
+  const spreadsheetItems = React.useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const dateComp = sortOrder === 'desc'
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date);
+      if (dateComp !== 0) return dateComp;
+      return sortOrder === 'desc'
+        ? (b.time || '').localeCompare(a.time || '')
+        : (a.time || '').localeCompare(b.time || '');
+    });
+  }, [filtered, sortOrder]);
 
-    if (onInlineUpdateTransaction) {
-      onInlineUpdateTransaction(txId, {
-        description: inlineDesc.trim(),
+  // Handle Quick Row submission in spreadsheet
+  const handleQuickRowSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const num = parseRupiahInput(quickRowAmount);
+    if (num <= 0) {
+      alert('Silakan masukkan nominal transaksi.');
+      return;
+    }
+    if (!quickRowDesc.trim()) {
+      alert('Silakan masukkan uraian / catatan transaksi.');
+      return;
+    }
+
+    const chosenMember = quickRowMemberId || (currentGroup.members || [])[0]?.id || '';
+    const eligible = getEligibleAssetsForMember(currentGroup.assets || [], chosenMember);
+    const chosenAsset = quickRowAssetId && eligible.some((a) => a.id === quickRowAssetId)
+      ? quickRowAssetId
+      : eligible[0]?.id || (currentGroup.assets || [])[0]?.id || '';
+
+    const matchingCats = sortedCategories.filter((c) =>
+      quickRowType === 'expense' ? c.type !== 'income' : c.type === 'income'
+    );
+    const chosenCat = quickRowCategoryId && matchingCats.some((c) => c.id === quickRowCategoryId)
+      ? quickRowCategoryId
+      : matchingCats[0]?.id || sortedCategories[0]?.id || '';
+
+    const astObj = (currentGroup.assets || []).find((a) => a.id === chosenAsset);
+    let pMethod: PaymentMethod = 'transfer_bank';
+    if (astObj) {
+      if (astObj.type === 'kas') pMethod = 'tunai';
+      else if (astObj.type === 'ewallet') pMethod = 'qris_ewallet';
+      else pMethod = 'transfer_bank';
+    }
+
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (onQuickSaveTransaction) {
+      onQuickSaveTransaction({
         amount: num,
-        categoryId: inlineCatId,
-        date: inlineDate || undefined,
-        assetId: inlineAssetId || undefined,
-        memberId: inlineMemberId,
+        type: quickRowType,
+        categoryId: chosenCat,
+        description: quickRowDesc.trim(),
+        date: quickRowDate || now.toISOString().split('T')[0],
+        time,
+        paymentMethod: pMethod,
+        assetId: chosenAsset || undefined,
+        memberId: chosenMember,
+        groupId: currentGroup.id,
       });
     }
-    setInlineEditingId(null);
+
+    setQuickRowAmount('');
+    setQuickRowDesc('');
+    setQuickRowSuccess(true);
+    setTimeout(() => setQuickRowSuccess(false), 2000);
+  };
+
+  // Copy / Duplikat transaction (like in Excel/Spreadsheet)
+  const handleCopyTransaction = (tx: Transaction, toInputBar = false) => {
+    if (toInputBar) {
+      setQuickRowAmount(formatRupiah(tx.amount, { withPrefix: false }));
+      setQuickRowDesc(tx.description);
+      setQuickRowType(tx.type);
+      setQuickRowCategoryId(tx.categoryId);
+      setQuickRowMemberId(tx.memberId);
+      setQuickRowAssetId(tx.assetId || '');
+      setQuickRowDate(tx.date);
+      setCopyFeedback(`Data "${tx.description}" disalin ke baris input!`);
+      setTimeout(() => setCopyFeedback(null), 2500);
+      return;
+    }
+
+    if (onQuickSaveTransaction) {
+      onQuickSaveTransaction({
+        amount: tx.amount,
+        type: tx.type,
+        categoryId: tx.categoryId,
+        description: `${tx.description}`,
+        date: tx.date,
+        time: new Date().toTimeString().substring(0, 5),
+        paymentMethod: tx.paymentMethod,
+        assetId: tx.assetId,
+        memberId: tx.memberId,
+        groupId: tx.groupId,
+      });
+      setCopyFeedback(`Transaksi "${tx.description}" berhasil disalin!`);
+      setTimeout(() => setCopyFeedback(null), 2500);
+    } else if (onDuplicateTransaction) {
+      onDuplicateTransaction(tx);
+    }
+  };
+
+  // Change single field of transaction via dropdown pill (1-click edit)
+  const handleSpreadsheetChangeField = (
+    txId: string,
+    field: 'memberId' | 'categoryId' | 'assetId' | 'date',
+    value: string
+  ) => {
+    if (onInlineUpdateTransaction) {
+      onInlineUpdateTransaction(txId, { [field]: value });
+    }
+    setActiveDropdown(null);
+  };
+
+  // Inline edit save for amount or description in spreadsheet
+  const handleSpreadsheetInlineSave = (txId: string) => {
+    const updates: Partial<Transaction> = {};
+    if (spreadsheetTempAmount) {
+      const num = parseRupiahInput(spreadsheetTempAmount);
+      if (num > 0) updates.amount = num;
+    }
+    if (spreadsheetTempDesc.trim()) {
+      updates.description = spreadsheetTempDesc.trim();
+    }
+    if (Object.keys(updates).length > 0 && onInlineUpdateTransaction) {
+      onInlineUpdateTransaction(txId, updates);
+    }
+    setSpreadsheetEditingId(null);
   };
 
   return (
@@ -354,11 +572,30 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
           {/* Toolbar Controls: View Mode, Sort Order, Month Scope, Filter Toggle */}
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-            {/* View Mode Toggle: Detail vs Simple */}
+            {/* View Mode Toggle: Spreadsheet vs Detail vs Simple */}
             <div className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0">
               <button
                 type="button"
-                onClick={() => setViewMode('detail')}
+                onClick={() => {
+                  setViewMode('spreadsheet');
+                  localStorage.setItem('arthasync_tx_view_mode', 'spreadsheet');
+                }}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'spreadsheet'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Tampilan Spreadsheet Ringkas (seperti Excel)"
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Spreadsheet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('detail');
+                  localStorage.setItem('arthasync_tx_view_mode', 'detail');
+                }}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   viewMode === 'detail'
                     ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
@@ -371,7 +608,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode('simple')}
+                onClick={() => {
+                  setViewMode('simple');
+                  localStorage.setItem('arthasync_tx_view_mode', 'simple');
+                }}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   viewMode === 'simple'
                     ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold'
@@ -431,21 +671,82 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </div>
         </div>
 
-        {/* Filter Details Accordion - Member filter handled globally by Navbar */}
+        {/* Quick Filter Chips (Pill Bar) for 1-Click Fast Filtering */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <span className="text-[11px] font-semibold text-slate-400">Pintas Filter:</span>
+          {/* Type Chips */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setSelectedType('all')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                selectedType === 'all'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-bold shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              Semua Tipe
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedType(selectedType === 'expense' ? 'all' : 'expense')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                selectedType === 'expense'
+                  ? 'bg-rose-500 text-white font-bold shadow-2xs'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+              }`}
+            >
+              🔴 Pengeluaran
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedType(selectedType === 'income' ? 'all' : 'income')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                selectedType === 'income'
+                  ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+              }`}
+            >
+              🟢 Pemasukan
+            </button>
+          </div>
+
+          {/* Account/Asset Quick Chips */}
+          {(currentGroup.assets || []).length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              {availableAssetsForFilter.slice(0, 5).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setSelectedAsset(selectedAsset === a.id ? 'all' : a.id)}
+                  className={`px-2 py-0.5 rounded-lg text-[11px] font-medium border transition-all cursor-pointer ${
+                    selectedAsset === a.id
+                      ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-bold border-transparent shadow-2xs'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  💳 {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Filter Details Accordion - Dynamic Category & Account Filtering */}
         {showFilters && (
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Category Filter */}
+            {/* Category Filter - Dynamically filtered by selectedType and selectedAsset! */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Kategori
+                Kategori {selectedType !== 'all' ? `(${selectedType === 'expense' ? 'Pengeluaran' : 'Pemasukan'})` : ''}
               </label>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               >
-                <option value="all">Semua Kategori</option>
-                {sortedCategories.map((c) => {
+                <option value="all">Semua Kategori ({availableCategoriesForFilter.length})</option>
+                {availableCategoriesForFilter.map((c) => {
                   const count = categoryUsageCount[c.id] || 0;
                   return (
                     <option key={c.id} value={c.id}>
@@ -456,18 +757,18 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               </select>
             </div>
 
-            {/* Rekening / Kantong Aset Filter */}
+            {/* Rekening / Kantong Aset Filter - Dynamically filtered! */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Rekening / Aset
+                Rekening / Sumber Dana
               </label>
               <select
                 value={selectedAsset}
                 onChange={(e) => setSelectedAsset(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               >
-                <option value="all">Semua Rekening</option>
-                {(currentGroup.assets || []).map((a) => (
+                <option value="all">Semua Rekening ({availableAssetsForFilter.length})</option>
+                {availableAssetsForFilter.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} ({a.institution})
                   </option>
@@ -533,7 +834,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         </div>
       </div>
 
-      {/* Transaction List Grouped by Date */}
+      {/* Toast Feedback for Copy Action */}
+      {copyFeedback && (
+        <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-1">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{copyFeedback}</span>
+          </div>
+          <button
+            onClick={() => setCopyFeedback(null)}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Transaction List: Empty State vs Spreadsheet vs Grouped Cards */}
       {grouped.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 space-y-3">
           <p className="text-sm">Tidak ditemukan transaksi yang sesuai dengan filter.</p>
@@ -552,6 +869,532 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               Catat Transaksi Sekarang
             </button>
           )}
+        </div>
+      ) : viewMode === 'spreadsheet' ? (
+        /* SPREADSHEET VIEW (Tampilan Tabel Ringkas Spreadsheet) */
+        <div className="space-y-3">
+          {/* Backdrop for open dropdown pills */}
+          {activeDropdown && (
+            <div
+              className="fixed inset-0 z-30 bg-transparent"
+              onClick={() => setActiveDropdown(null)}
+            />
+          )}
+
+          <div className="w-full overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            <table className="w-full text-left border-collapse min-w-[920px]">
+              {/* Teal Table Header (Exact styling from user's screenshot) */}
+              <thead className="bg-[#138a72] text-white text-xs font-bold tracking-wide select-none">
+                <tr>
+                  <th className="py-3 px-3 text-center w-12 border-r border-teal-600/40">
+                    <span>No</span>
+                  </th>
+                  <th className="py-3 px-3.5 w-44 border-r border-teal-600/40">
+                    <div
+                      onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                      className="flex items-center gap-1.5 cursor-pointer hover:text-teal-100 transition-colors"
+                      title="Urutkan Tanggal"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Tanggal</span>
+                      <ArrowDownUp className="w-3 h-3 opacity-80" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-3.5 w-36 border-r border-teal-600/40">
+                    <div className="flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" />
+                      <span>Anggota</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-3.5 w-44 border-r border-teal-600/40">
+                    <div className="flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" />
+                      <span>Kategori</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-3.5 w-40 border-r border-teal-600/40">
+                    <div className="flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>Sumber Dana</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-4 w-36 text-right border-r border-teal-600/40">
+                    <span>Nominal</span>
+                  </th>
+                  <th className="py-3 px-3.5 min-w-[200px] border-r border-teal-600/40">
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-[11px] font-normal opacity-80">TT</span>
+                      <span>Uraian</span>
+                    </div>
+                  </th>
+                  <th className="py-3 px-3 text-center w-28">
+                    <span>Aksi</span>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                {/* Horizontal Quick Input Row (Pinned directly at top of spreadsheet) */}
+                <tr
+                  className={`border-b-2 transition-colors ${
+                    quickRowSuccess
+                      ? 'bg-emerald-100/70 dark:bg-emerald-950/50 border-emerald-500'
+                      : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400/40'
+                  }`}
+                >
+                  {/* Plus Icon / Indicator */}
+                  <td className="py-2.5 px-2 text-center align-middle font-bold text-emerald-600 dark:text-emerald-400">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-2xs font-mono text-xs">
+                      +
+                    </div>
+                  </td>
+
+                  {/* Date Input */}
+                  <td className="py-2 px-2.5 align-middle">
+                    <input
+                      type="date"
+                      value={quickRowDate}
+                      onChange={(e) => setQuickRowDate(e.target.value)}
+                      className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+
+                  {/* Anggota Dropdown */}
+                  <td className="py-2 px-2.5 align-middle">
+                    <select
+                      value={quickRowMemberId || (currentGroup.members || [])[0]?.id || ''}
+                      onChange={(e) => setQuickRowMemberId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-full border border-cyan-400/50 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 font-bold text-[11px] cursor-pointer"
+                    >
+                      {(currentGroup.members || []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Kategori Dropdown (with Type Switcher) */}
+                  <td className="py-2 px-2.5 align-middle">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setQuickRowType(quickRowType === 'expense' ? 'income' : 'expense')}
+                        className={`px-1.5 py-1 rounded text-[10px] font-bold shrink-0 cursor-pointer ${
+                          quickRowType === 'expense'
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        }`}
+                        title="Klik untuk ubah jenis pengeluaran/pemasukan"
+                      >
+                        {quickRowType === 'expense' ? 'Keluar' : 'Masuk'}
+                      </button>
+                      <select
+                        value={
+                          quickRowCategoryId ||
+                          sortedCategories.filter((c) =>
+                            quickRowType === 'expense' ? c.type !== 'income' : c.type === 'income'
+                          )[0]?.id ||
+                          ''
+                        }
+                        onChange={(e) => setQuickRowCategoryId(e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-full border border-amber-400/50 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-bold text-[11px] cursor-pointer truncate"
+                      >
+                        {sortedCategories
+                          .filter((c) =>
+                            quickRowType === 'expense' ? c.type !== 'income' : c.type === 'income'
+                          )
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </td>
+
+                  {/* Sumber Dana Dropdown */}
+                  <td className="py-2 px-2.5 align-middle">
+                    <select
+                      value={quickRowAssetId || (currentGroup.assets || [])[0]?.id || ''}
+                      onChange={(e) => setQuickRowAssetId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-full border border-slate-400/50 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer truncate"
+                    >
+                      {(currentGroup.assets || []).map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Nominal Input */}
+                  <td className="py-2 px-2.5 align-middle text-right">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[11px] pointer-events-none">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={quickRowAmount}
+                        onChange={(e) => {
+                          const num = parseRupiahInput(e.target.value);
+                          setQuickRowAmount(
+                            num === 0 && e.target.value === ''
+                              ? ''
+                              : formatRupiah(num, { withPrefix: false })
+                          );
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && handleQuickRowSubmit()}
+                        placeholder="0"
+                        className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-xs text-right focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </td>
+
+                  {/* Uraian Input */}
+                  <td className="py-2 px-2.5 align-middle">
+                    <input
+                      type="text"
+                      value={quickRowDesc}
+                      onChange={(e) => setQuickRowDesc(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleQuickRowSubmit()}
+                      placeholder="Uraian / catatan belanja (Tekan Enter)..."
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+
+                  {/* Action Button */}
+                  <td className="py-2 px-2 align-middle text-center">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickRowSubmit()}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                      title="Simpan Transaksi Cepat (Enter)"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah</span>
+                    </button>
+                  </td>
+                </tr>
+
+                {/* Data Rows */}
+                {spreadsheetItems.map((tx, idx) => {
+                  const cat = catMap.get(tx.categoryId);
+                  const mem = memMap.get(tx.memberId);
+                  const linkedAsset = tx.assetId ? assetMap.get(tx.assetId) : (currentGroup.assets || [])[0];
+                  const isExp = tx.type === 'expense';
+                  const isEditingThisRow = spreadsheetEditingId === tx.id;
+
+                  // Member pill color (e.g. Cyan for Ega, Pink for Yusuf)
+                  const memberPillBg = mem?.avatarColor || '#06b6d4';
+                  // Category pill color (from cat.color)
+                  const categoryPillBg = cat?.color || '#b0957a';
+                  // Asset pill color (Navy for Cash, Teal for Sea Bank)
+                  const assetPillBg = linkedAsset?.color || '#2b3952';
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors border-b border-slate-100 dark:border-slate-800/70 group"
+                    >
+                      {/* No */}
+                      <td className="py-2.5 px-3 text-center align-middle font-mono text-slate-500 dark:text-slate-400 font-medium">
+                        {idx + 1}
+                      </td>
+
+                      {/* Tanggal (Kam, 01 Jan 2026) */}
+                      <td className="py-2.5 px-3.5 align-middle relative">
+                        <div className="flex items-center gap-1.5 group/date">
+                          <span className="font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                            {formatSpreadsheetDate(tx.date)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const input = e.currentTarget.parentElement?.querySelector('input[type="date"]') as HTMLInputElement | null;
+                              if (input) {
+                                if (typeof input.showPicker === 'function') {
+                                  try { input.showPicker(); return; } catch {}
+                                }
+                                input.focus();
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity cursor-pointer text-slate-400 hover:text-slate-600"
+                            title="Ubah Tanggal"
+                          >
+                            <Calendar className="w-3 h-3" />
+                          </button>
+                          <input
+                            type="date"
+                            value={tx.date}
+                            onChange={(e) => handleSpreadsheetChangeField(tx.id, 'date', e.target.value)}
+                            className="sr-only"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                          />
+                        </div>
+                      </td>
+
+                      {/* Anggota (Dropdown Capsule Pill with Caret) */}
+                      <td className="py-2.5 px-3.5 align-middle relative">
+                        <div className="relative inline-block">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveDropdown(
+                                activeDropdown?.txId === tx.id && activeDropdown.field === 'member'
+                                  ? null
+                                  : { txId: tx.id, field: 'member' }
+                              )
+                            }
+                            className="px-3 py-1 rounded-full text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs hover:opacity-90 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                            style={{ backgroundColor: memberPillBg }}
+                          >
+                            <span>{mem?.name || 'Anggota'}</span>
+                            <ChevronDown className="w-3 h-3 opacity-70" />
+                          </button>
+
+                          {/* Inline Dropdown for Member */}
+                          {activeDropdown?.txId === tx.id && activeDropdown.field === 'member' && (
+                            <div className="absolute left-0 top-full mt-1.5 z-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl py-1 min-w-[140px] animate-in fade-in zoom-in-95">
+                              {(currentGroup.members || []).map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => handleSpreadsheetChangeField(tx.id, 'memberId', m.id)}
+                                  className="w-full px-3 py-1.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: m.avatarColor }}
+                                  />
+                                  <span className="truncate text-slate-800 dark:text-slate-200">{m.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Kategori (Dropdown Capsule Pill with Caret) */}
+                      <td className="py-2.5 px-3.5 align-middle relative">
+                        <div className="relative inline-block max-w-[180px]">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveDropdown(
+                                activeDropdown?.txId === tx.id && activeDropdown.field === 'category'
+                                  ? null
+                                  : { txId: tx.id, field: 'category' }
+                              )
+                            }
+                            className="px-3 py-1 rounded-full text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs hover:opacity-90 active:scale-95 transition-all cursor-pointer truncate max-w-full"
+                            style={{ backgroundColor: categoryPillBg }}
+                            title={cat?.name || 'Kategori'}
+                          >
+                            <span className="truncate">{cat?.name || 'Kategori'}</span>
+                            <ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
+                          </button>
+
+                          {/* Inline Dropdown for Category */}
+                          {activeDropdown?.txId === tx.id && activeDropdown.field === 'category' && (
+                            <div className="absolute left-0 top-full mt-1.5 z-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl py-1 min-w-[170px] max-h-60 overflow-y-auto animate-in fade-in zoom-in-95">
+                              {sortedCategories.map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => handleSpreadsheetChangeField(tx.id, 'categoryId', c.id)}
+                                  className="w-full px-3 py-1.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: c.color }}
+                                  />
+                                  <span className="truncate text-slate-800 dark:text-slate-200">{c.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Sumber Dana (Dropdown Capsule Pill with Caret) */}
+                      <td className="py-2.5 px-3.5 align-middle relative">
+                        <div className="relative inline-block max-w-[160px]">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveDropdown(
+                                activeDropdown?.txId === tx.id && activeDropdown.field === 'asset'
+                                  ? null
+                                  : { txId: tx.id, field: 'asset' }
+                              )
+                            }
+                            className="px-3 py-1 rounded-full text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs hover:opacity-90 active:scale-95 transition-all cursor-pointer truncate max-w-full"
+                            style={{ backgroundColor: assetPillBg }}
+                            title={linkedAsset?.name || 'Kas'}
+                          >
+                            <span className="truncate">{linkedAsset?.name || 'Kas'}</span>
+                            <ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
+                          </button>
+
+                          {/* Inline Dropdown for Asset */}
+                          {activeDropdown?.txId === tx.id && activeDropdown.field === 'asset' && (
+                            <div className="absolute left-0 top-full mt-1.5 z-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl py-1 min-w-[160px] animate-in fade-in zoom-in-95">
+                              {getEligibleAssetsForMember(currentGroup.assets || [], tx.memberId).map((a) => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  onClick={() => handleSpreadsheetChangeField(tx.id, 'assetId', a.id)}
+                                  className="w-full px-3 py-1.5 text-left text-xs font-semibold flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: a.color }}
+                                  />
+                                  <span className="truncate text-slate-800 dark:text-slate-200">{a.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Nominal */}
+                      <td className="py-2.5 px-4 align-middle text-right">
+                        {isEditingThisRow ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={spreadsheetTempAmount}
+                              onChange={(e) => {
+                                const num = parseRupiahInput(e.target.value);
+                                setSpreadsheetTempAmount(
+                                  num === 0 && e.target.value === ''
+                                    ? ''
+                                    : formatRupiah(num, { withPrefix: false })
+                                );
+                              }}
+                              onKeyDown={(e) => e.key === 'Enter' && handleSpreadsheetInlineSave(tx.id)}
+                              autoFocus
+                              className="w-24 px-1.5 py-0.5 rounded border border-emerald-500 bg-white dark:bg-slate-800 font-mono font-bold text-xs text-right"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSpreadsheetInlineSave(tx.id)}
+                              className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => {
+                              setSpreadsheetEditingId(tx.id);
+                              setSpreadsheetTempAmount(formatRupiah(tx.amount, { withPrefix: false }));
+                              setSpreadsheetTempDesc(tx.description);
+                            }}
+                            className={`font-mono font-bold text-xs sm:text-sm cursor-pointer hover:underline ${
+                              isExp ? 'text-slate-900 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'
+                            }`}
+                            title="Klik untuk ubah nominal"
+                          >
+                            {formatRupiah(tx.amount)}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Uraian */}
+                      <td className="py-2.5 px-3.5 align-middle">
+                        {isEditingThisRow ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={spreadsheetTempDesc}
+                              onChange={(e) => setSpreadsheetTempDesc(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleSpreadsheetInlineSave(tx.id)}
+                              className="flex-1 px-2 py-0.5 rounded border border-emerald-500 bg-white dark:bg-slate-800 text-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSpreadsheetInlineSave(tx.id)}
+                              className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSpreadsheetEditingId(null)}
+                              className="p-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => {
+                              setSpreadsheetEditingId(tx.id);
+                              setSpreadsheetTempAmount(formatRupiah(tx.amount, { withPrefix: false }));
+                              setSpreadsheetTempDesc(tx.description);
+                            }}
+                            className="font-normal text-slate-800 dark:text-slate-200 text-xs cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 truncate block max-w-md"
+                            title="Klik untuk ubah uraian"
+                          >
+                            {tx.description}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Aksi (Copy, Edit, Delete) */}
+                      <td className="py-2.5 px-2 align-middle text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Copy / Duplikat Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyTransaction(tx)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
+                            title="Salin / Duplikat Baris Ini Langsung"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Edit Full Modal */}
+                          <button
+                            type="button"
+                            onClick={() => onEditTransaction(tx)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                            title="Edit Lengkap di Modal"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Yakin ingin menghapus catatan "${tx.description}"?`)) {
+                                onDeleteTransaction(tx.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            title="Hapus Transaksi"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

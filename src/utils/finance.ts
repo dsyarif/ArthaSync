@@ -77,6 +77,29 @@ export function formatIndonesianDate(
 }
 
 /**
+ * Format date for compact spreadsheet table view with Indonesian abbreviated day name
+ * Example: "2026-01-01" -> "Kam, 01 Jan 2026"
+ */
+export function formatSpreadsheetDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+
+  const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+  const d = new Date(year, monthIdx, day);
+  const dayName = isNaN(d.getTime()) ? '' : dayNames[d.getDay()];
+  const formattedDay = String(day).padStart(2, '0');
+  const monthName = shortMonths[monthIdx] || parts[1];
+
+  return dayName ? `${dayName}, ${formattedDay} ${monthName} ${year}` : `${formattedDay} ${monthName} ${year}`;
+}
+
+/**
  * Calculate Monthly Statistics
  */
 export interface CategoryStat {
@@ -636,16 +659,62 @@ export interface AssetOverviewResult {
   accounts: AssetAccount[];
 }
 
+/**
+ * Get the effective balance of an account for a specific member or all members
+ */
+export function getAssetBalanceForMember(asset: AssetAccount, memberId?: string): number {
+  if (!memberId || memberId === 'all') {
+    if (asset.memberBalances && Object.keys(asset.memberBalances).length > 0) {
+      return Object.values(asset.memberBalances).reduce((s, v) => s + (v || 0), 0);
+    }
+    return typeof asset.balance === 'number' && !isNaN(asset.balance) ? asset.balance : 0;
+  }
+  if (memberId === 'joint') {
+    if (asset.memberBalances && asset.memberBalances['joint'] !== undefined) {
+      return asset.memberBalances['joint'];
+    }
+    if (!asset.memberId || asset.memberId === 'joint') {
+      return typeof asset.balance === 'number' && !isNaN(asset.balance) ? asset.balance : 0;
+    }
+    return 0;
+  }
+  // Specific individual member
+  if (asset.memberBalances && asset.memberBalances[memberId] !== undefined) {
+    return asset.memberBalances[memberId];
+  }
+  if (asset.memberId === memberId) {
+    return typeof asset.balance === 'number' && !isNaN(asset.balance) ? asset.balance : 0;
+  }
+  return 0;
+}
+
 export function calculateAssetOverview(
   assets: AssetAccount[] = [],
   memberFilter?: string
 ): AssetOverviewResult {
-  // Filter accounts if memberFilter is specified
-  const filteredAssets = assets.filter((a) => {
-    if (!memberFilter || memberFilter === 'all') return true;
-    if (memberFilter === 'joint') return !a.memberId || a.memberId === 'joint';
-    return a.memberId === memberFilter;
-  });
+  const filteredAssets: AssetAccount[] = [];
+
+  for (const a of assets) {
+    if (!memberFilter || memberFilter === 'all') {
+      const bal = getAssetBalanceForMember(a, 'all');
+      filteredAssets.push({ ...a, balance: bal });
+    } else if (memberFilter === 'joint') {
+      if (a.memberBalances && a.memberBalances['joint'] !== undefined) {
+        filteredAssets.push({ ...a, balance: a.memberBalances['joint'] });
+      } else if (!a.memberId || a.memberId === 'joint') {
+        const bal = typeof a.balance === 'number' && !isNaN(a.balance) ? a.balance : 0;
+        filteredAssets.push({ ...a, balance: bal });
+      }
+    } else {
+      // Specific member (e.g. Yusuf or Ega)
+      if (a.memberBalances && a.memberBalances[memberFilter] !== undefined) {
+        filteredAssets.push({ ...a, balance: a.memberBalances[memberFilter] });
+      } else if (a.memberId === memberFilter) {
+        const bal = typeof a.balance === 'number' && !isNaN(a.balance) ? a.balance : 0;
+        filteredAssets.push({ ...a, balance: bal });
+      }
+    }
+  }
 
   let kas = 0;
   let bank = 0;
@@ -653,7 +722,7 @@ export function calculateAssetOverview(
   let investasi = 0;
 
   for (const a of filteredAssets) {
-    const bal = typeof a.balance === 'number' && !isNaN(a.balance) ? a.balance : 0;
+    const bal = a.balance;
     if (a.type === 'kas') kas += bal;
     else if (a.type === 'bank') bank += bal;
     else if (a.type === 'ewallet') ewallet += bal;
@@ -830,7 +899,13 @@ export function getEligibleAssetsForMember(
   memberId?: string
 ): AssetAccount[] {
   if (!memberId) return assets;
-  return assets.filter((a) => !a.memberId || a.memberId === 'joint' || a.memberId === memberId);
+  return assets.filter((a) => {
+    // Shared multi-member accounts with individual balances are accessible by all family members
+    if (a.memberBalances && Object.keys(a.memberBalances).length > 0) {
+      return true;
+    }
+    return !a.memberId || a.memberId === 'joint' || a.memberId === memberId;
+  });
 }
 
 /**

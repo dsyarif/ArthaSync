@@ -14,6 +14,8 @@ import {
   calculateDebtSummary,
   calculateRealNetWorth,
   formatIndonesianDate,
+  formatSpreadsheetDate,
+  getAssetBalanceForMember,
   getEligibleAssetsForMember,
   getMemberColorTheme,
 } from './finance.ts';
@@ -694,4 +696,56 @@ test('calculateYearlyStats aggregates 12 months timeline, categories, and member
   assert.equal(yearly.memberBreakdown[0].amount, 4500000);
   assert.equal(yearly.memberBreakdown[1].memberName, 'Ibu');
   assert.equal(yearly.memberBreakdown[1].amount, 500000);
+});
+
+test('formatSpreadsheetDate formats date with Indonesian abbreviated day name', () => {
+  assert.equal(formatSpreadsheetDate('2026-01-01'), 'Kam, 01 Jan 2026');
+  assert.equal(formatSpreadsheetDate('2026-01-04'), 'Min, 04 Jan 2026');
+  assert.equal(formatSpreadsheetDate('2026-01-05'), 'Sen, 05 Jan 2026');
+  assert.equal(formatSpreadsheetDate(''), '');
+});
+
+test('multi-member account supports single account definition with member-specific balances', () => {
+  // Scenario from user: Rekening Bima 1 akun, Yusuf 1jt, Ega 2jt, total 3jt
+  const bimaAccount: AssetAccount = {
+    id: 'ast-bima',
+    name: 'Bima',
+    type: 'bank',
+    institution: 'Bank Bima',
+    balance: 3000000,
+    memberBalances: {
+      'mem-yusuf': 1000000,
+      'mem-ega': 2000000,
+    },
+    color: '#3b82f6',
+    updatedAt: 1,
+  };
+
+  // Test getAssetBalanceForMember
+  assert.equal(getAssetBalanceForMember(bimaAccount, 'all'), 3000000);
+  assert.equal(getAssetBalanceForMember(bimaAccount, 'mem-yusuf'), 1000000);
+  assert.equal(getAssetBalanceForMember(bimaAccount, 'mem-ega'), 2000000);
+  assert.equal(getAssetBalanceForMember(bimaAccount, 'mem-other'), 0);
+
+  // Test calculateAssetOverview with member balances
+  const allOverview = calculateAssetOverview([bimaAccount], 'all');
+  assert.equal(allOverview.totalAssets, 3000000);
+  assert.equal(allOverview.accounts[0].balance, 3000000);
+
+  const yusufOverview = calculateAssetOverview([bimaAccount], 'mem-yusuf');
+  assert.equal(yusufOverview.totalAssets, 1000000);
+  assert.equal(yusufOverview.accounts[0].balance, 1000000);
+
+  const egaOverview = calculateAssetOverview([bimaAccount], 'mem-ega');
+  assert.equal(egaOverview.totalAssets, 2000000);
+  assert.equal(egaOverview.accounts[0].balance, 2000000);
+
+  // Test getEligibleAssetsForMember: both Yusuf and Ega have access to Bima
+  const eligibleYusuf = getEligibleAssetsForMember([bimaAccount], 'mem-yusuf');
+  assert.equal(eligibleYusuf.length, 1);
+  assert.equal(eligibleYusuf[0].id, 'ast-bima');
+
+  const eligibleEga = getEligibleAssetsForMember([bimaAccount], 'mem-ega');
+  assert.equal(eligibleEga.length, 1);
+  assert.equal(eligibleEga[0].id, 'ast-bima');
 });

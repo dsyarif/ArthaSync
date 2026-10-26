@@ -97,6 +97,8 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
   const [balanceInput, setBalanceInput] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [assetMemberId, setAssetMemberId] = useState('');
+  const [allocationMode, setAllocationMode] = useState<'per_member' | 'single'>('per_member');
+  const [memberBalancesInput, setMemberBalancesInput] = useState<Record<string, string>>({});
   const [color, setColor] = useState('#2563eb');
   const [error, setError] = useState('');
 
@@ -150,6 +152,12 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
     setBalanceInput('');
     setAccountNumber('');
     setAssetMemberId('');
+    setAllocationMode(members.length > 1 ? 'per_member' : 'single');
+    const initialMap: Record<string, string> = {};
+    members.forEach((m) => {
+      initialMap[m.id] = '';
+    });
+    setMemberBalancesInput(initialMap);
     setColor('#2563eb');
     setError('');
     setModalOpen(true);
@@ -164,6 +172,24 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
     setAccountNumber(asset.accountNumber || '');
     setAssetMemberId(asset.memberId || '');
     setColor(asset.color || '#2563eb');
+
+    if (asset.memberBalances && Object.keys(asset.memberBalances).length > 0) {
+      setAllocationMode('per_member');
+      const map: Record<string, string> = {};
+      members.forEach((m) => {
+        const bal = asset.memberBalances?.[m.id];
+        map[m.id] = bal ? formatRupiah(bal, { withPrefix: false }) : '';
+      });
+      setMemberBalancesInput(map);
+    } else {
+      setAllocationMode('single');
+      const map: Record<string, string> = {};
+      members.forEach((m) => {
+        map[m.id] = m.id === asset.memberId ? formatRupiah(asset.balance, { withPrefix: false }) : '';
+      });
+      setMemberBalancesInput(map);
+    }
+
     setError('');
     setModalOpen(true);
   };
@@ -175,7 +201,26 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
       return;
     }
 
-    const balance = parseRupiahInput(balanceInput);
+    let finalBalance = 0;
+    let finalMemberBalances: Record<string, number> | undefined = undefined;
+    let finalMemberId: string | undefined = undefined;
+
+    if (allocationMode === 'per_member') {
+      const mb: Record<string, number> = {};
+      let total = 0;
+      members.forEach((m) => {
+        const amt = parseRupiahInput(memberBalancesInput[m.id] || '0');
+        mb[m.id] = amt;
+        total += amt;
+      });
+      finalBalance = total;
+      finalMemberBalances = mb;
+      finalMemberId = undefined; // Shared multi-member account
+    } else {
+      finalBalance = parseRupiahInput(balanceInput);
+      finalMemberBalances = undefined;
+      finalMemberId = assetMemberId || undefined;
+    }
 
     if (editingAsset) {
       const updatedAssets = assets.map((a) =>
@@ -185,9 +230,10 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
               name: name.trim(),
               type,
               institution: institution.trim() || 'Lainnya',
-              balance,
+              balance: finalBalance,
+              memberBalances: finalMemberBalances,
               accountNumber: accountNumber.trim(),
-              memberId: assetMemberId || undefined,
+              memberId: finalMemberId,
               color,
               updatedAt: Date.now(),
             }
@@ -203,9 +249,10 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
         name: name.trim(),
         type,
         institution: institution.trim() || 'Lainnya',
-        balance,
+        balance: finalBalance,
+        memberBalances: finalMemberBalances,
         accountNumber: accountNumber.trim(),
-        memberId: assetMemberId || undefined,
+        memberId: finalMemberId,
         color,
         updatedAt: Date.now(),
       };
@@ -491,6 +538,7 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
         {showAccountsList && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-3 animate-in fade-in">
             {overview.accounts.map((account) => {
+              const hasMultiMember = !!(account.memberBalances && Object.keys(account.memberBalances).length > 0);
               const owner = account.memberId ? memMap.get(account.memberId) : undefined;
               return (
                 <div
@@ -501,7 +549,7 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-2">
                       <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
                         style={{ backgroundColor: account.color }}
                       >
                         {getAssetIcon(account.type)}
@@ -509,12 +557,14 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
                       {/* Owner Badge */}
                       <span
                         className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                          owner
+                          hasMultiMember
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            : owner
                             ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                             : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                         }`}
                       >
-                        {owner ? owner.name : 'Bersama'}
+                        {hasMultiMember ? 'Multi-Anggota' : owner ? owner.name : 'Bersama'}
                       </span>
                     </div>
                     <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
@@ -523,12 +573,38 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
                     <p className="text-[10px] text-slate-400 truncate">
                       {account.institution} {account.accountNumber ? `· ${account.accountNumber}` : ''}
                     </p>
+
+                    {/* Member Balances Badges in Multi-Member Account */}
+                    {hasMultiMember && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {members.map((m) => {
+                          const mb = account.memberBalances?.[m.id];
+                          if (mb === undefined || mb === 0) return null;
+                          return (
+                            <span
+                              key={m.id}
+                              className="text-[9px] px-1.5 py-0.5 rounded-md font-mono bg-white/10 text-slate-200 border border-white/10 truncate max-w-full"
+                              title={`${m.name}: ${formatRupiah(mb)}`}
+                            >
+                              {m.name}: {formatRupiah(mb, { compact: true })}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-white">
-                      {isBalanceHidden ? '****' : formatRupiah(account.balance, { compact: true })}
-                    </span>
+                    <div>
+                      <span className="text-[11px] font-mono font-bold text-white">
+                        {isBalanceHidden ? '****' : formatRupiah(account.balance, { compact: true })}
+                      </span>
+                      {activeMemberFilter !== 'all' && hasMultiMember && (
+                        <span className="text-[9px] text-emerald-400 block font-sans">
+                          porsi {memMap.get(activeMemberFilter)?.name || 'anggota'}
+                        </span>
+                      )}
+                    </div>
                     <Edit2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
@@ -607,53 +683,142 @@ export const AssetOverviewCard: React.FC<AssetOverviewCardProps> = ({
                 </div>
               </div>
 
-              {/* Ownership: Saldo Bersama vs Specific Member */}
+              {/* Allocation Mode: Per Anggota Keluarga vs Single / Saldo Bersama */}
               <div>
                 <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                  Kepemilikan Saldo Rekening
+                  Mode Alokasi Saldo Rekening
                 </label>
-                <select
-                  value={assetMemberId}
-                  onChange={(e) => setAssetMemberId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
-                >
-                  <option value="">Saldo Bersama / Rekening Keluarga (Gabungan)</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      Milik Khusus: {m.name} ({m.role.replace('_', ' ')})
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Rekening bersama akan dihitung saat melihat saldo gabungan keluarga
-                </span>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setAllocationMode('per_member')}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      allocationMode === 'per_member'
+                        ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    👥 Saldo per Anggota
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAllocationMode('single')}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      allocationMode === 'single'
+                        ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    🏦 Saldo Tunggal / Bersama
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {allocationMode === 'per_member'
+                    ? 'Cukup 1 nama rekening (misal: Bima, Cash, Sea Bank), masing-masing anggota mengisi nominal saldonya sendiri.'
+                    : '1 nominal total rekening untuk kas bersama keluarga atau milik pribadi satu orang.'}
+                </p>
               </div>
 
-              <div>
-                <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                  Saldo Saat Ini (Rupiah) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">
-                    Rp
+              {allocationMode === 'per_member' ? (
+                /* Saldo per Anggota List */
+                <div className="space-y-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Nominal Saldo Masing-Masing Anggota:
                   </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={balanceInput}
-                    onChange={(e) => {
-                      const num = parseRupiahInput(e.target.value);
-                      setBalanceInput(
-                        num === 0 && e.target.value === ''
-                          ? ''
-                          : formatRupiah(num, { withPrefix: false })
-                      );
-                    }}
-                    placeholder="0"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-sm"
-                  />
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                        style={{ backgroundColor: m.avatarColor }}
+                      >
+                        {m.name.charAt(0)}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 w-24 truncate">
+                        {m.name}
+                      </span>
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px] font-bold">
+                          Rp
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={memberBalancesInput[m.id] || ''}
+                          onChange={(e) => {
+                            const num = parseRupiahInput(e.target.value);
+                            setMemberBalancesInput((prev) => ({
+                              ...prev,
+                              [m.id]: num === 0 && e.target.value === '' ? '' : formatRupiah(num, { withPrefix: false }),
+                            }));
+                          }}
+                          placeholder="0"
+                          className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono font-bold text-xs"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Calculated Total Banner */}
+                  <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-500">Total Akumulasi Saldo:</span>
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatRupiah(
+                        members.reduce((sum, m) => sum + parseRupiahInput(memberBalancesInput[m.id] || '0'), 0)
+                      )}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Single / Joint Balance Input */
+                <>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                      Kepemilikan Saldo Rekening
+                    </label>
+                    <select
+                      value={assetMemberId}
+                      onChange={(e) => setAssetMemberId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
+                    >
+                      <option value="">Saldo Bersama / Rekening Keluarga (Gabungan)</option>
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          Milik Khusus: {m.name} ({m.role.replace('_', ' ')})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Rekening bersama akan dihitung saat melihat saldo gabungan keluarga
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                      Saldo Saat Ini (Rupiah) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={balanceInput}
+                        onChange={(e) => {
+                          const num = parseRupiahInput(e.target.value);
+                          setBalanceInput(
+                            num === 0 && e.target.value === ''
+                              ? ''
+                              : formatRupiah(num, { withPrefix: false })
+                          );
+                        }}
+                        placeholder="0"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-sm"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
