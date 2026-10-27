@@ -285,10 +285,6 @@ export class StorageService {
 
     const existing = current[index];
 
-    // Revert old transaction's impact on old asset
-    const oldDelta = existing.type === 'income' ? existing.amount : -existing.amount;
-    this.adjustAssetBalance(existing.groupId, existing.assetId, -oldDelta, existing.memberId);
-
     const updatedTx: Transaction = {
       ...existing,
       ...updates,
@@ -297,9 +293,8 @@ export class StorageService {
       syncStatus: 'synced',
     };
 
-    // Apply new transaction's impact on new asset
-    const newDelta = updatedTx.type === 'income' ? updatedTx.amount : -updatedTx.amount;
-    this.adjustAssetBalance(updatedTx.groupId, updatedTx.assetId, newDelta, updatedTx.memberId);
+    // Safely sync asset balances atomically without race conditions
+    this.syncAssetBalancesOnTxUpdate(existing, updatedTx);
 
     current[index] = updatedTx;
     this.saveTransactions(current);
@@ -313,6 +308,90 @@ export class StorageService {
     }
 
     return updatedTx;
+  }
+
+  /**
+   * Atomically synchronize asset balances when a transaction is edited.
+   * Prevents race conditions and duplicate HTTP requests to Supabase groups table.
+   */
+  public static syncAssetBalancesOnTxUpdate(oldTx: Transaction, newTx: Transaction) {
+    const oldDelta = oldTx.type === 'income' ? oldTx.amount : -oldTx.amount;
+    const newDelta = newTx.type === 'income' ? newTx.amount : -newTx.amount;
+
+    const assetChanged = oldTx.assetId !== newTx.assetId;
+    const memberChanged = oldTx.memberId !== newTx.memberId;
+    const deltaChanged = oldDelta !== newDelta;
+
+    // If no financial factor changed (e.g. only description, category, or date changed), do not touch asset balances!
+    if (!assetChanged && !memberChanged && !deltaChanged) {
+      return;
+    }
+
+    // If same asset and member, apply net difference in a single atomic update
+    if (!assetChanged && !memberChanged) {
+      const netDelta = newDelta - oldDelta;
+      if (netDelta !== 0) {
+        this.adjustAssetBalance(newTx.groupId, newTx.assetId, netDelta, newTx.memberId);
+      }
+      return;
+    }
+
+    // Asset or member changed: perform both updates in memory in a single atomic pass
+    const groups = this.getGroups();
+    const grpIndex = groups.findIndex((g) => g.id === newTx.groupId);
+    if (grpIndex === -1) return;
+
+    const grp = groups[grpIndex];
+    const assets = grp.assets || [];
+
+    // 1. Revert old asset
+    if (oldTx.assetId) {
+      const oldAstIndex = assets.findIndex((a) => a.id === oldTx.assetId);
+      if (oldAstIndex !== -1) {
+        const oldAst = assets[oldAstIndex];
+        const oldBal = (oldAst.balance || 0) - oldDelta;
+        let oldMemberBalances = oldAst.memberBalances ? { ...oldAst.memberBalances } : undefined;
+        if (oldMemberBalances && oldTx.memberId) {
+          oldMemberBalances[oldTx.memberId] = (oldMemberBalances[oldTx.memberId] || 0) - oldDelta;
+        }
+        assets[oldAstIndex] = {
+          ...oldAst,
+          balance: oldBal,
+          memberBalances: oldMemberBalances,
+          updatedAt: Date.now(),
+        };
+      }
+    }
+
+    // 2. Apply to new asset
+    if (newTx.assetId) {
+      const newAstIndex = assets.findIndex((a) => a.id === newTx.assetId);
+      if (newAstIndex !== -1) {
+        const newAst = assets[newAstIndex];
+        const newBal = (newAst.balance || 0) + newDelta;
+        let newMemberBalances = newAst.memberBalances ? { ...newAst.memberBalances } : undefined;
+        if (newMemberBalances && newTx.memberId) {
+          newMemberBalances[newTx.memberId] = (newMemberBalances[newTx.memberId] || 0) + newDelta;
+        }
+        assets[newAstIndex] = {
+          ...newAst,
+          balance: newBal,
+          memberBalances: newMemberBalances,
+          updatedAt: Date.now(),
+        };
+      }
+    }
+
+    grp.assets = [...assets];
+    grp.updatedAt = Date.now();
+    groups[grpIndex] = grp;
+
+    this.saveGroups(groups);
+    if (isSupabaseConfigured()) {
+      SupabaseSyncService.saveGroup(grp).catch((err) =>
+        console.warn('Supabase saveGroup notice:', err)
+      );
+    }
   }
 
   public static getDeletedTxIds(): string[] {
@@ -1240,11 +1319,8 @@ export class StorageService {
         try {
           const remote = await SupabaseSyncService.pullFromSupabase();
 
-          // Refresh local cache with canonical data from Supabase
-          this.saveGroups(remote.groups);
-          this.saveCategories(remote.categories);
-          this.saveTransactions(remote.transactions);
-          this.saveDebts(remote.debts);
+          // Merge canonical data from Supabase safely using Last-Write-Wins (LWW) conflict resolution
+          this.mergeRemoteStore(remote);
 
           this.clearPendingQueue();
           this.syncState.lastSyncedAt = Date.now();

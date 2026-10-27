@@ -37,6 +37,11 @@ test('parseRupiahInput cleans and parses user string input', () => {
   assert.equal(parseRupiahInput(''), 0);
   assert.equal(parseRupiahInput('abc'), 0);
   assert.equal(parseRupiahInput('Rp 500'), 500);
+  assert.equal(parseRupiahInput('50.000,00'), 50000);
+  assert.equal(parseRupiahInput('50000.00'), 50000);
+  assert.equal(parseRupiahInput('50k'), 50000);
+  assert.equal(parseRupiahInput('15rb'), 15000);
+  assert.equal(parseRupiahInput('1.5jt'), 1500000);
 });
 
 test('calculateMonthlyStats aggregates expenses, categories, and member totals', () => {

@@ -42,10 +42,37 @@ export function formatRupiah(amount: number, options?: { withPrefix?: boolean; c
 /**
  * Parse raw string input into clean integer amount
  * "Rp 150.000" -> 150000
+ * Supports:
+ * - "50k" or "50rb" -> 50000
+ * - "1.5jt" -> 1500000
+ * - Trailing decimal cents like ",00" or ".00" -> stripped cleanly without 100x multiplication
  */
 export function parseRupiahInput(value: string): number {
   if (!value) return 0;
-  const cleaned = value.replace(/[^0-9]/g, '');
+  let str = value.trim().toLowerCase();
+
+  // Strip trailing cents like ,00 or .00 (e.g. from bank statement copy-paste)
+  str = str.replace(/[,.]00$/, '');
+
+  // Handle shorthand suffix: 'rb' / 'k' -> multiply by 1,000
+  if (/(\d+(?:[.,]\d+)?)\s*(?:rb|k)\b/.test(str)) {
+    const match = str.match(/(\d+(?:[.,]\d+)?)\s*(?:rb|k)/);
+    if (match) {
+      const baseNum = parseFloat(match[1].replace(',', '.'));
+      return isNaN(baseNum) ? 0 : Math.round(baseNum * 1000);
+    }
+  }
+
+  // Handle shorthand suffix: 'jt' / 'm' / 'juta' -> multiply by 1,000,000
+  if (/(\d+(?:[.,]\d+)?)\s*(?:jt|m|juta)\b/.test(str)) {
+    const match = str.match(/(\d+(?:[.,]\d+)?)\s*(?:jt|m|juta)/);
+    if (match) {
+      const baseNum = parseFloat(match[1].replace(',', '.'));
+      return isNaN(baseNum) ? 0 : Math.round(baseNum * 1000000);
+    }
+  }
+
+  const cleaned = str.replace(/[^0-9]/g, '');
   const parsed = parseInt(cleaned, 10);
   return isNaN(parsed) ? 0 : parsed;
 }
