@@ -49,9 +49,15 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     is_transfer BOOLEAN NOT NULL DEFAULT false,
     to_asset_id TEXT,
     transfer_pair_id TEXT,
+    exclude_from_stats BOOLEAN DEFAULT false,
+    is_debt BOOLEAN DEFAULT false,
     updated_at BIGINT NOT NULL DEFAULT 1,
     is_deleted BOOLEAN NOT NULL DEFAULT false
 );
+
+-- Migrasi aman jika tabel transactions sudah ada sebelumnya
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS exclude_from_stats BOOLEAN DEFAULT false;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS is_debt BOOLEAN DEFAULT false;
 
 -- 4. Tabel Debts (Catatan Utang & Piutang)
 CREATE TABLE IF NOT EXISTS public.debts (

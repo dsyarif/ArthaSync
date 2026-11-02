@@ -69,6 +69,9 @@ export interface Transaction {
   isTransfer?: boolean;
   toAssetId?: string;
   transferPairId?: string;
+  excludeFromStats?: boolean; // When true, excluded from monthly/yearly stats (Pure cash flow mode)
+  isDebt?: boolean; // Originates from utang/piutang creation or repayment
+  debtId?: string; // Linked debt ID
   updatedAt: number;
   isDeleted?: boolean;
 }
@@ -86,6 +89,7 @@ export interface DebtPayment {
   assetId?: string; // Rekening pembayar (saldo berkurang)
   recipientAssetId?: string; // Jika internal: Rekening penerima (saldo bertambah)
   note?: string;
+  excludeFromStats?: boolean;
   createdAt: number;
   transactionIds?: string[]; // IDs transaksi yang otomatis dicatat untuk pembayaran ini
 }
@@ -110,6 +114,7 @@ export interface DebtRecord {
   status: DebtStatus;
   payments?: DebtPayment[];
   initialTransactionIds?: string[]; // IDs transaksi pencairan awal pinjaman
+  excludeFromStats?: boolean; // Opsi kecualikan dari perhitungan statistik
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;

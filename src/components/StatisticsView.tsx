@@ -21,6 +21,7 @@ import {
   X,
   CheckCircle2,
   ShieldAlert,
+  ShieldCheck,
   ArrowRight,
 } from 'lucide-react';
 import { AssetAccount, Category, FamilyGroup, Transaction } from '../types/finance';
@@ -30,6 +31,7 @@ import {
   formatIndonesianDate,
   formatRupiah,
   generateCsvData,
+  isDebtTransaction,
   MonthSummaryStat,
   YearlyStatsResult,
 } from '../utils/finance';
@@ -62,6 +64,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
   const [internalYear, setInternalYear] = useState(currentDate.getFullYear());
   const [internalMonth, setInternalMonth] = useState(currentDate.getMonth() + 1); // 1-12
   const [periodMode, setPeriodMode] = useState<'monthly' | 'yearly'>('monthly');
+  const [excludeDebtsMode, setExcludeDebtsMode] = useState(true);
   const [hoveredMonth, setHoveredMonth] = useState<MonthSummaryStat | null>(null);
   const [hoveredDay, setHoveredDay] = useState<{ day: number; amount: number; dateStr: string } | null>(null);
   const [selectedCategoryModal, setSelectedCategoryModal] = useState<Category | null>(null);
@@ -140,7 +143,8 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     categories,
     currentGroup.members || [],
     selectedYear,
-    selectedMonth
+    selectedMonth,
+    { excludeDebts: excludeDebtsMode, excludeTransfers: true }
   );
 
   // Calculate previous month stats for analytics comparison
@@ -151,7 +155,8 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     categories,
     currentGroup.members || [],
     prevYear,
-    prevMonth
+    prevMonth,
+    { excludeDebts: excludeDebtsMode, excludeTransfers: true }
   );
 
   // Highest daily expense
@@ -243,7 +248,8 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     groupTransactions,
     categories,
     currentGroup.members || [],
-    selectedYear
+    selectedYear,
+    { excludeDebts: excludeDebtsMode, excludeTransfers: true }
   );
 
   let cumulativeYearlyAngle = 0;
@@ -417,6 +423,21 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             </button>
           </div>
 
+          {/* Pure Cash Flow Mode Toggle (Arus Kas Murni tanpa Utang/Piutang) */}
+          <button
+            type="button"
+            onClick={() => setExcludeDebtsMode(!excludeDebtsMode)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+              excludeDebtsMode
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 shadow-2xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+            title="Klik untuk ubah: Kecualikan transaksi utang & piutang dari statistik agar belanja & penghasilan 100% murni"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{excludeDebtsMode ? 'Arus Kas Murni (Tanpa Hutang)' : 'Termasuk Hutang/Piutang'}</span>
+          </button>
+
           <button
             onClick={() => {
               const exportTxs = periodMode === 'monthly'
@@ -448,6 +469,32 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Pure Cash Flow Info Banner */}
+      {excludeDebtsMode && (periodMode === 'monthly' ? stats.excludedDebtCount > 0 : yearlyStats.excludedDebtCount > 0) && (
+        <div className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/50 flex items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              Mode Arus Kas Murni aktif: <strong>{periodMode === 'monthly' ? stats.excludedDebtCount : yearlyStats.excludedDebtCount} transaksi</strong> utang/piutang (
+              {periodMode === 'monthly' && stats.excludedDebtExpense > 0 && `Keluar: ${formatRupiah(stats.excludedDebtExpense)}`}
+              {periodMode === 'monthly' && stats.excludedDebtExpense > 0 && stats.excludedDebtIncome > 0 && ' · '}
+              {periodMode === 'monthly' && stats.excludedDebtIncome > 0 && `Masuk: ${formatRupiah(stats.excludedDebtIncome)}`}
+              {periodMode === 'yearly' && yearlyStats.excludedDebtExpense > 0 && `Keluar: ${formatRupiah(yearlyStats.excludedDebtExpense)}`}
+              {periodMode === 'yearly' && yearlyStats.excludedDebtExpense > 0 && yearlyStats.excludedDebtIncome > 0 && ' · '}
+              {periodMode === 'yearly' && yearlyStats.excludedDebtIncome > 0 && `Masuk: ${formatRupiah(yearlyStats.excludedDebtIncome)}`}
+              ) dipisahkan dari statistik agar perhitungan belanja kebutuhan dan pendapatan hidup Anda 100% akurat.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExcludeDebtsMode(false)}
+            className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline shrink-0 cursor-pointer"
+          >
+            Tampilkan Semua
+          </button>
+        </div>
+      )}
 
       {periodMode === 'monthly' ? (
         <div className="space-y-6 animate-in fade-in">

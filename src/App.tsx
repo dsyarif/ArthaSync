@@ -265,7 +265,7 @@ export default function App() {
   // Debt & Piutang Actions
   const handleAddDebt = (
     debtData: Omit<DebtRecord, 'id' | 'createdAt' | 'updatedAt' | 'paidAmount' | 'payments' | 'status'>,
-    options?: { affectAssetBalance?: boolean; assetId?: string }
+    options?: { affectAssetBalance?: boolean; assetId?: string; excludeFromStats?: boolean }
   ) => {
     try {
       StorageService.addDebt(debtData, options);
@@ -292,7 +292,14 @@ export default function App() {
 
   const handleAddDebtPayment = (
     debtId: string,
-    payment: { amount: number; date: string; note?: string; assetId?: string; recipientAssetId?: string },
+    payment: {
+      amount: number;
+      date: string;
+      note?: string;
+      assetId?: string;
+      recipientAssetId?: string;
+      excludeFromStats?: boolean;
+    },
     affectAssetBalance?: boolean
   ) => {
     try {

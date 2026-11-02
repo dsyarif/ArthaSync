@@ -25,22 +25,29 @@ import {
 interface DebtModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: {
-    groupId: string;
-    type: DebtType;
-    partyType: DebtPartyType;
-    scope?: DebtScope;
-    isJoint?: boolean;
-    memberId: string;
-    otherMemberId?: string;
-    otherPersonName?: string;
-    amount: number;
-    dueDate?: string;
-    date: string;
-    description: string;
-    assetId?: string;
-    targetAssetId?: string;
-  }) => void;
+  onSave: (
+    data: {
+      groupId: string;
+      type: DebtType;
+      partyType: DebtPartyType;
+      scope?: DebtScope;
+      isJoint?: boolean;
+      memberId: string;
+      otherMemberId?: string;
+      otherPersonName?: string;
+      amount: number;
+      dueDate?: string;
+      date: string;
+      description: string;
+      assetId?: string;
+      targetAssetId?: string;
+      excludeFromStats?: boolean;
+    },
+    options?: {
+      affectAssetBalance?: boolean;
+      excludeFromStats?: boolean;
+    }
+  ) => void;
   members: FamilyMember[];
   assets: AssetAccount[];
   groupId: string;
@@ -70,6 +77,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({
   const [description, setDescription] = useState('');
   const [assetId, setAssetId] = useState('');
   const [targetAssetId, setTargetAssetId] = useState('');
+  const [excludeFromStats, setExcludeFromStats] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -89,6 +97,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({
       setDescription(editingDebt.description);
       setAssetId(editingDebt.assetId || '');
       setTargetAssetId(editingDebt.targetAssetId || '');
+      setExcludeFromStats(editingDebt.excludeFromStats !== false);
     } else {
       const now = new Date();
       setScope('perorangan');
@@ -103,6 +112,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({
       setDescription('');
       setAssetId('');
       setTargetAssetId('');
+      setExcludeFromStats(true);
     }
     setError('');
   }, [editingDebt, isOpen, members]);
@@ -156,22 +166,29 @@ export const DebtModal: React.FC<DebtModalProps> = ({
       }
     }
 
-    onSave({
-      groupId,
-      type,
-      partyType: isJoint ? 'external' : partyType,
-      scope,
-      isJoint,
-      memberId: isJoint ? 'joint' : memberId,
-      otherMemberId: !isJoint && partyType === 'internal' ? otherMemberId : undefined,
-      otherPersonName: otherPersonName.trim() || undefined,
-      amount: parsedAmount,
-      dueDate: dueDate || undefined,
-      date: date || new Date().toISOString().split('T')[0],
-      description: description.trim(),
-      assetId: assetId || undefined,
-      targetAssetId: !isJoint && partyType === 'internal' ? targetAssetId || undefined : undefined,
-    });
+    onSave(
+      {
+        groupId,
+        type,
+        partyType: isJoint ? 'external' : partyType,
+        scope,
+        isJoint,
+        memberId: isJoint ? 'joint' : memberId,
+        otherMemberId: !isJoint && partyType === 'internal' ? otherMemberId : undefined,
+        otherPersonName: otherPersonName.trim() || undefined,
+        amount: parsedAmount,
+        dueDate: dueDate || undefined,
+        date: date || new Date().toISOString().split('T')[0],
+        description: description.trim(),
+        assetId: assetId || undefined,
+        targetAssetId: !isJoint && partyType === 'internal' ? targetAssetId || undefined : undefined,
+        excludeFromStats,
+      },
+      {
+        affectAssetBalance: !!assetId || !!targetAssetId,
+        excludeFromStats,
+      }
+    );
 
     onClose();
   };
@@ -571,6 +588,25 @@ export const DebtModal: React.FC<DebtModalProps> = ({
                 className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+          </div>
+
+          {/* Opsi Kecualikan dari Statistik (Arus Kas Murni) */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-start gap-3">
+            <input
+              id="exclude-stats-checkbox"
+              type="checkbox"
+              checked={excludeFromStats}
+              onChange={(e) => setExcludeFromStats(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+            />
+            <label htmlFor="exclude-stats-checkbox" className="text-xs cursor-pointer select-none">
+              <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                Kecualikan dari Perhitungan Statistik (Arus Kas Murni)
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                Pencairan atau penerimaan utang/piutang ini hanya memengaruhi saldo kas/rekening, tidak dihitung sebagai beban belanja atau penghasilan di menu Statistik & Dashboard.
+              </span>
+            </label>
           </div>
 
           {/* Actions */}

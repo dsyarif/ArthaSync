@@ -18,6 +18,7 @@ import {
   getAssetBalanceForMember,
   getEligibleAssetsForMember,
   getMemberColorTheme,
+  isDebtTransaction,
 } from './finance.ts';
 import { AssetAccount, Category, DebtRecord, FamilyMember, Transaction } from '../types/finance.ts';
 
@@ -753,4 +754,145 @@ test('multi-member account supports single account definition with member-specif
   const eligibleEga = getEligibleAssetsForMember([bimaAccount], 'mem-ega');
   assert.equal(eligibleEga.length, 1);
   assert.equal(eligibleEga[0].id, 'ast-bima');
+});
+
+test('isDebtTransaction identifies debt and loan disbursement/payment transactions accurately', () => {
+  const normalTx: Transaction = {
+    id: 'tx-norm',
+    amount: 25000,
+    type: 'expense',
+    categoryId: 'cat-food',
+    description: 'Nasi goreng',
+    date: '2026-11-01',
+    time: '12:00',
+    paymentMethod: 'tunai',
+    groupId: 'grp-1',
+    memberId: 'mem-1',
+    syncStatus: 'synced',
+    updatedAt: 1,
+  };
+  assert.equal(isDebtTransaction(normalTx), false);
+
+  const flagDebtTx: Transaction = {
+    ...normalTx,
+    isDebt: true,
+  };
+  assert.equal(isDebtTransaction(flagDebtTx), true);
+
+  const excludeStatsTx: Transaction = {
+    ...normalTx,
+    excludeFromStats: true,
+  };
+  assert.equal(isDebtTransaction(excludeStatsTx), true);
+
+  const nyilihiCategoryTx: Transaction = {
+    ...normalTx,
+    categoryId: 'cat-nyilihi',
+  };
+  assert.equal(isDebtTransaction(nyilihiCategoryTx), true);
+
+  const loanOutTx: Transaction = {
+    ...normalTx,
+    description: 'Pencairan Piutang ke Budi: Pinjam modal',
+  };
+  assert.equal(isDebtTransaction(loanOutTx), true);
+
+  const debtPayTx: Transaction = {
+    ...normalTx,
+    description: 'Pembayaran Utang: Cicilan motor Adira',
+  };
+  assert.equal(isDebtTransaction(debtPayTx), true);
+});
+
+test('calculateMonthlyStats excludes debt transactions in pure cash flow mode', () => {
+  const dummyCategories: Category[] = [
+    { id: 'cat-1', name: 'Makanan', icon: 'Utensils', color: '#f97316', monthlyBudget: 1500000, updatedAt: 1 },
+    { id: 'cat-bills', name: 'Tagihan & Utang', icon: 'Receipt', color: '#3b82f6', monthlyBudget: 500000, updatedAt: 1 },
+    { id: 'cat-salary', name: 'Gaji Pokok', icon: 'Briefcase', color: '#10b981', monthlyBudget: 0, type: 'income', updatedAt: 1 },
+  ];
+
+  const dummyMembers: FamilyMember[] = [
+    { id: 'mem-1', name: 'Yusuf', role: 'kepala_keluarga', avatarColor: '#3b82f6' },
+  ];
+
+  const mixedTransactions: Transaction[] = [
+    // 1. Pure Living Expense: 100.000
+    {
+      id: 'tx-food',
+      amount: 100000,
+      type: 'expense',
+      categoryId: 'cat-1',
+      description: 'Belanja sayur & beras',
+      date: '2026-11-02',
+      time: '08:00',
+      paymentMethod: 'tunai',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 1,
+    },
+    // 2. Debt Payment: 2.000.000 (should NOT inflate living expense in pure stats!)
+    {
+      id: 'tx-debt-pay',
+      amount: 2000000,
+      type: 'expense',
+      categoryId: 'cat-bills',
+      description: 'Pembayaran Utang: Bank Mandiri KPR',
+      date: '2026-11-03',
+      time: '09:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      isDebt: true,
+      excludeFromStats: true,
+      updatedAt: 2,
+    },
+    // 3. Pure Earned Income: 7.000.000
+    {
+      id: 'tx-salary',
+      amount: 7000000,
+      type: 'income',
+      categoryId: 'cat-salary',
+      description: 'Gaji Bulanan PT Maju',
+      date: '2026-11-01',
+      time: '10:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      updatedAt: 3,
+    },
+    // 4. Loan Received from third party: 5.000.000 (should NOT inflate earned income!)
+    {
+      id: 'tx-loan-in',
+      amount: 5000000,
+      type: 'income',
+      categoryId: 'cat-bills',
+      description: 'Penerimaan Pinjaman dari Koperasi',
+      date: '2026-11-02',
+      time: '11:00',
+      paymentMethod: 'transfer_bank',
+      groupId: 'grp-1',
+      memberId: 'mem-1',
+      syncStatus: 'synced',
+      isDebt: true,
+      excludeFromStats: true,
+      updatedAt: 4,
+    },
+  ];
+
+  // Default / Pure Cash Flow Mode:
+  const pureStats = calculateMonthlyStats(mixedTransactions, dummyCategories, dummyMembers, 2026, 11);
+  assert.equal(pureStats.totalSpent, 100000, 'Pengeluaran murni belanja hanya 100k, bukan 2.1jt');
+  assert.equal(pureStats.totalIncome, 7000000, 'Pemasukan murni hanya gaji 7jt, bukan pinjaman 12jt');
+  assert.equal(pureStats.netSavings, 6900000);
+  assert.equal(pureStats.excludedDebtCount, 2);
+  assert.equal(pureStats.excludedDebtExpense, 2000000);
+  assert.equal(pureStats.excludedDebtIncome, 5000000);
+
+  // Combined Mode with excludeDebts: false:
+  const combinedStats = calculateMonthlyStats(mixedTransactions, dummyCategories, dummyMembers, 2026, 11, { excludeDebts: false });
+  assert.equal(combinedStats.totalSpent, 2100000, 'Jika excludeDebts: false, utang dihitung');
+  assert.equal(combinedStats.totalIncome, 12000000, 'Jika excludeDebts: false, pinjaman dihitung');
 });

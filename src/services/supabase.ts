@@ -126,6 +126,15 @@ export function fromSupabaseCategory(row: any): Category {
 }
 
 export function toSupabaseTx(tx: Transaction) {
+  let transferPairId = tx.transferPairId || null;
+  if (!transferPairId) {
+    if (tx.debtId) {
+      transferPairId = `debt:${tx.debtId}`;
+    } else if (tx.excludeFromStats) {
+      transferPairId = 'exclude_stats';
+    }
+  }
+
   return {
     id: tx.id,
     amount: tx.amount,
@@ -141,13 +150,17 @@ export function toSupabaseTx(tx: Transaction) {
     receipt_url: tx.receiptUrl || null,
     is_transfer: !!tx.isTransfer,
     to_asset_id: tx.toAssetId || null,
-    transfer_pair_id: tx.transferPairId || null,
+    transfer_pair_id: transferPairId,
     updated_at: tx.updatedAt || Date.now(),
     is_deleted: !!tx.isDeleted,
   };
 }
 
 export function fromSupabaseTx(row: any): Transaction {
+  const isDebtPair = typeof row.transfer_pair_id === 'string' && row.transfer_pair_id.startsWith('debt:');
+  const isExcludedPair = row.transfer_pair_id === 'exclude_stats' || isDebtPair;
+  const isActualTransfer = !!row.is_transfer && !isDebtPair && row.transfer_pair_id !== 'exclude_stats';
+
   return {
     id: row.id,
     amount: Number(row.amount),
@@ -162,9 +175,12 @@ export function fromSupabaseTx(row: any): Transaction {
     memberId: row.member_id,
     receiptUrl: row.receipt_url || undefined,
     syncStatus: 'synced',
-    isTransfer: !!row.is_transfer,
+    isTransfer: isActualTransfer,
     toAssetId: row.to_asset_id || undefined,
-    transferPairId: row.transfer_pair_id || undefined,
+    transferPairId: isActualTransfer ? row.transfer_pair_id : undefined,
+    excludeFromStats: !!row.exclude_from_stats || isExcludedPair,
+    isDebt: !!row.is_debt || isDebtPair,
+    debtId: isDebtPair ? row.transfer_pair_id.replace('debt:', '') : undefined,
     updatedAt: Number(row.updated_at || 1),
     isDeleted: !!row.is_deleted,
   };

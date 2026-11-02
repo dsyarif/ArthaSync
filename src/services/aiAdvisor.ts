@@ -112,13 +112,14 @@ export function buildFinancialContext(
     return true;
   });
 
-  // Calculate current month stats using central finance engine
+  // Calculate current month stats using central finance engine (Pure cash flow mode without debt/loan distortions)
   const stats = calculateMonthlyStats(
     groupTransactions,
     categories || [],
     safeGroup.members || [],
     year,
-    month
+    month,
+    { excludeDebts: true, excludeTransfers: true }
   );
 
   // Calculate previous month stats for MoM comparison
@@ -129,7 +130,8 @@ export function buildFinancialContext(
     categories || [],
     safeGroup.members || [],
     prevYear,
-    prevMonth
+    prevMonth,
+    { excludeDebts: true, excludeTransfers: true }
   );
 
   const expenseDiff = (stats?.totalSpent || 0) - (prevStats?.totalSpent || 0);
@@ -240,7 +242,8 @@ export function buildFinancialContext(
         groupTransactions,
         categories || [],
         safeGroup.members || [],
-        year
+        year,
+        { excludeDebts: true, excludeTransfers: true }
       );
       return {
         year,

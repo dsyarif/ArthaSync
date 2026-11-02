@@ -83,6 +83,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [memberId, setMemberId] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [excludeFromStats, setExcludeFromStats] = useState(false);
   const [error, setError] = useState('');
 
   // Category frequency calculation (must be declared unconditionally at top level)
@@ -130,6 +131,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCategoryId(editingTransaction.categoryId);
       setDate(editingTransaction.date);
       setTime(editingTransaction.time);
+      setExcludeFromStats(Boolean(editingTransaction.excludeFromStats));
     } else if (duplicateTransaction) {
       const now = new Date();
       setType(duplicateTransaction.type);
@@ -140,12 +142,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setTime(
         `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
       );
+      setExcludeFromStats(Boolean(duplicateTransaction.excludeFromStats));
     } else {
       // Defaults for new entry
       const now = new Date();
       setType('expense');
       setAmountInput('');
       setDescription('');
+      setExcludeFromStats(false);
       
       // Default to first expense category
       const expenseCats = categories.filter((c) => c.type !== 'income');
@@ -245,6 +249,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       assetId: assetId || (assets[0]?.id || undefined),
       memberId,
       groupId,
+      excludeFromStats,
     });
 
     onClose();
@@ -616,6 +621,25 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+          </div>
+
+          {/* Opsi Kecualikan dari Statistik (Arus Kas Murni) */}
+          <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 flex items-start gap-2.5">
+            <input
+              id="tx-exclude-stats"
+              type="checkbox"
+              checked={excludeFromStats}
+              onChange={(e) => setExcludeFromStats(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+            />
+            <label htmlFor="tx-exclude-stats" className="text-xs cursor-pointer select-none">
+              <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                Kecualikan dari Perhitungan Statistik (Arus Kas Murni)
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                Centang jika transaksi ini bersifat non-operasional (misal titipan dana, talangan piutang, pelunasan utang) agar tidak memengaruhi grafik belanja & pendapatan murni.
+              </span>
+            </label>
           </div>
 
           {/* Offline Warning Notice */}

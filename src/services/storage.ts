@@ -587,14 +587,18 @@ export class StorageService {
     debt: Omit<DebtRecord, 'id' | 'createdAt' | 'updatedAt' | 'paidAmount' | 'status' | 'payments'>,
     options?: {
       affectAssetBalance?: boolean;
+      excludeFromStats?: boolean;
     }
   ): DebtRecord {
     this.assertOnline('mencatat data utang/piutang');
 
     const id = `debt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const excludeFromStats = options?.excludeFromStats ?? debt.excludeFromStats ?? true;
+
     const newDebt: DebtRecord = {
       ...debt,
       id,
+      excludeFromStats,
       paidAmount: 0,
       status: 'unpaid',
       payments: [],
@@ -628,6 +632,9 @@ export class StorageService {
             assetId: debt.assetId,
             memberId: lenderMemberId,
             groupId: debt.groupId,
+            isDebt: true,
+            debtId: id,
+            excludeFromStats,
           });
           if (tx?.id) initialTxIds.push(tx.id);
         }
@@ -645,6 +652,9 @@ export class StorageService {
             assetId: debt.targetAssetId,
             memberId: borrowerMemberId,
             groupId: debt.groupId,
+            isDebt: true,
+            debtId: id,
+            excludeFromStats,
           });
           if (tx?.id) initialTxIds.push(tx.id);
         }
@@ -664,6 +674,9 @@ export class StorageService {
               assetId: debt.assetId,
               memberId: debt.memberId,
               groupId: debt.groupId,
+              isDebt: true,
+              debtId: id,
+              excludeFromStats,
             });
             if (tx?.id) initialTxIds.push(tx.id);
           } else {
@@ -679,6 +692,9 @@ export class StorageService {
               assetId: debt.assetId,
               memberId: debt.memberId,
               groupId: debt.groupId,
+              isDebt: true,
+              debtId: id,
+              excludeFromStats,
             });
             if (tx?.id) initialTxIds.push(tx.id);
           }
@@ -782,6 +798,7 @@ export class StorageService {
       assetId?: string; // Rekening pembayar (Peminjam)
       recipientAssetId?: string; // Rekening penerima (Pemberi Pinjaman)
       note?: string;
+      excludeFromStats?: boolean;
     },
     affectAssetBalance: boolean = true
   ): DebtRecord | null {
@@ -792,6 +809,7 @@ export class StorageService {
     if (index === -1) return null;
 
     const debt = current[index];
+    const excludeFromStats = payment.excludeFromStats ?? debt.excludeFromStats ?? true;
     const newPaidAmount = (debt.paidAmount || 0) + payment.amount;
     const paymentTxIds: string[] = [];
 
@@ -817,6 +835,9 @@ export class StorageService {
             assetId: payment.assetId,
             memberId: payerMemberId,
             groupId: debt.groupId,
+            isDebt: true,
+            debtId: debt.id,
+            excludeFromStats,
           });
           if (tx?.id) paymentTxIds.push(tx.id);
         }
@@ -834,6 +855,9 @@ export class StorageService {
             assetId: payment.recipientAssetId,
             memberId: receiverMemberId,
             groupId: debt.groupId,
+            isDebt: true,
+            debtId: debt.id,
+            excludeFromStats,
           });
           if (tx?.id) paymentTxIds.push(tx.id);
         }
@@ -853,6 +877,9 @@ export class StorageService {
               assetId: payment.assetId,
               memberId: debt.memberId,
               groupId: debt.groupId,
+              isDebt: true,
+              debtId: debt.id,
+              excludeFromStats,
             });
             if (tx?.id) paymentTxIds.push(tx.id);
           } else {
@@ -868,6 +895,9 @@ export class StorageService {
               assetId: payment.assetId,
               memberId: debt.memberId,
               groupId: debt.groupId,
+              isDebt: true,
+              debtId: debt.id,
+              excludeFromStats,
             });
             if (tx?.id) paymentTxIds.push(tx.id);
           }
@@ -882,6 +912,7 @@ export class StorageService {
       assetId: payment.assetId,
       recipientAssetId: payment.recipientAssetId,
       note: payment.note,
+      excludeFromStats,
       transactionIds: paymentTxIds.length > 0 ? paymentTxIds : undefined,
       createdAt: Date.now(),
     };

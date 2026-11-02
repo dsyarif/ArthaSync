@@ -29,7 +29,8 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
     categories,
     currentGroup.members || [],
     year,
-    month
+    month,
+    { excludeDebts: true, excludeTransfers: true }
   );
 
   const monthNames = [

@@ -29,6 +29,7 @@ import {
   formatRupiah,
   generateCsvData,
   getMemberColorTheme,
+  isDebtTransaction,
 } from '../utils/finance';
 import { CategoryIcon } from './CategoryIcon';
 import { AssetOverviewCard } from './AssetOverviewCard';
@@ -106,7 +107,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     categories,
     currentGroup.members || [],
     currentYear,
-    currentMonth
+    currentMonth,
+    { excludeDebts: true, excludeTransfers: true }
   );
 
   const netBalanceThisMonth = stats.totalIncome - stats.totalSpent;
@@ -158,7 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const dateStr = d.toISOString().split('T')[0];
     const dayLabel = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
     const dayAmount = filteredTransactionsForSummary
-      .filter((t) => t.type === 'expense' && !t.isTransfer && t.date === dateStr)
+      .filter((t) => t.type === 'expense' && !t.isTransfer && !isDebtTransaction(t) && !t.excludeFromStats && t.date === dateStr)
       .reduce((sum, item) => sum + item.amount, 0);
 
     last7Days.push({ dateStr, label: dayLabel, amount: dayAmount });
@@ -616,6 +618,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {tx.isTransfer && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                             Transfer
+                          </span>
+                        )}
+                        {(tx.excludeFromStats || isDebtTransaction(tx)) && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                            Hutang/Piutang
                           </span>
                         )}
                         {tx.syncStatus === 'synced' ? (

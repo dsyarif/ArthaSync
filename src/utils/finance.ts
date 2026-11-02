@@ -167,6 +167,28 @@ export interface MonthlyStatsResult {
   dailyTimeline: DailyStat[];
   memberBreakdown: MemberStat[];
   topExpenseCategory: CategoryStat | null;
+  excludedDebtCount: number;
+  excludedDebtExpense: number;
+  excludedDebtIncome: number;
+}
+
+/**
+ * Detect whether a transaction is related to debt or loans (utang / piutang)
+ */
+export function isDebtTransaction(t: Transaction): boolean {
+  if (t.isDebt || t.debtId) return true;
+  if (t.excludeFromStats) return true;
+  if (t.categoryId === 'cat-nyilihi') return true;
+  const desc = (t.description || '').toLowerCase();
+  return (
+    desc.startsWith('pinjaman ') ||
+    desc.startsWith('pencairan piutang') ||
+    desc.startsWith('penerimaan pinjaman') ||
+    desc.startsWith('pembayaran utang') ||
+    desc.startsWith('pelunasan piutang') ||
+    desc.startsWith('bayar cicilan') ||
+    desc.startsWith('terima pembayaran piutang')
+  );
 }
 
 export function calculateMonthlyStats(
@@ -174,9 +196,15 @@ export function calculateMonthlyStats(
   categories: Category[],
   members: FamilyMember[],
   year: number,
-  month: number // 1-12
+  month: number, // 1-12
+  options?: {
+    excludeDebts?: boolean;
+    excludeTransfers?: boolean;
+  }
 ): MonthlyStatsResult {
   const daysInMonth = new Date(year, month, 0).getDate();
+  const excludeDebts = options?.excludeDebts !== false;
+  const excludeTransfers = options?.excludeTransfers !== false;
 
   // Filter transactions for specific year and month
   const targetPrefix = `${year}-${String(month).padStart(2, '0')}`;
@@ -186,6 +214,9 @@ export function calculateMonthlyStats(
 
   let totalSpent = 0;
   let totalIncome = 0;
+  let excludedDebtCount = 0;
+  let excludedDebtExpense = 0;
+  let excludedDebtIncome = 0;
   const categoryTotals: Record<string, { amount: number; count: number }> = {};
   const memberTotals: Record<string, { amount: number; count: number }> = {};
   const dailyTotalsMap: Record<number, number> = {};
@@ -196,6 +227,21 @@ export function calculateMonthlyStats(
   }
 
   for (const item of monthlyItems) {
+    if (excludeTransfers && item.isTransfer) {
+      continue;
+    }
+
+    const isDebt = isDebtTransaction(item);
+    const shouldExclude =
+      excludeDebts && item.excludeFromStats !== false && (item.excludeFromStats === true || isDebt);
+
+    if (shouldExclude) {
+      excludedDebtCount += 1;
+      if (item.type === 'expense') excludedDebtExpense += item.amount;
+      else if (item.type === 'income') excludedDebtIncome += item.amount;
+      continue;
+    }
+
     if (item.type === 'expense') {
       totalSpent += item.amount;
 
@@ -287,6 +333,9 @@ export function calculateMonthlyStats(
     dailyTimeline,
     memberBreakdown,
     topExpenseCategory: categoryBreakdown.length > 0 ? categoryBreakdown[0] : null,
+    excludedDebtCount,
+    excludedDebtExpense,
+    excludedDebtIncome,
   };
 }
 
@@ -319,6 +368,9 @@ export interface YearlyStatsResult {
   categoryBreakdown: CategoryStat[];
   memberBreakdown: MemberStat[];
   topExpenseCategory: CategoryStat | null;
+  excludedDebtCount: number;
+  excludedDebtExpense: number;
+  excludedDebtIncome: number;
 }
 
 /**
@@ -328,7 +380,11 @@ export function calculateYearlyStats(
   transactions: Transaction[],
   categories: Category[],
   members: FamilyMember[],
-  year: number
+  year: number,
+  options?: {
+    excludeDebts?: boolean;
+    excludeTransfers?: boolean;
+  }
 ): YearlyStatsResult {
   const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const longMonths = [
@@ -336,11 +392,17 @@ export function calculateYearlyStats(
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
   ];
 
+  const excludeDebts = options?.excludeDebts !== false;
+  const excludeTransfers = options?.excludeTransfers !== false;
+
   const yearPrefix = `${year}-`;
   const yearlyItems = transactions.filter((t) => !t.isDeleted && t.date.startsWith(yearPrefix));
 
   let totalSpent = 0;
   let totalIncome = 0;
+  let excludedDebtCount = 0;
+  let excludedDebtExpense = 0;
+  let excludedDebtIncome = 0;
   const categoryTotals: Record<string, { amount: number; count: number }> = {};
   const memberTotals: Record<string, { amount: number; count: number }> = {};
 
@@ -360,6 +422,21 @@ export function calculateYearlyStats(
   }
 
   for (const item of yearlyItems) {
+    if (excludeTransfers && item.isTransfer) {
+      continue;
+    }
+
+    const isDebt = isDebtTransaction(item);
+    const shouldExclude =
+      excludeDebts && item.excludeFromStats !== false && (item.excludeFromStats === true || isDebt);
+
+    if (shouldExclude) {
+      excludedDebtCount += 1;
+      if (item.type === 'expense') excludedDebtExpense += item.amount;
+      else if (item.type === 'income') excludedDebtIncome += item.amount;
+      continue;
+    }
+
     const parts = item.date.split('-');
     const monthNum = parseInt(parts[1], 10);
     const mIdx = monthNum - 1;
@@ -477,6 +554,9 @@ export function calculateYearlyStats(
     categoryBreakdown,
     memberBreakdown,
     topExpenseCategory: categoryBreakdown.length > 0 ? categoryBreakdown[0] : null,
+    excludedDebtCount,
+    excludedDebtExpense,
+    excludedDebtIncome,
   };
 }
 

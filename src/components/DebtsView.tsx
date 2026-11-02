@@ -28,7 +28,7 @@ interface DebtsViewProps {
   debts: DebtRecord[];
   currentGroup: FamilyGroup;
   assets: AssetAccount[];
-  onAddDebt: (data: any) => void;
+  onAddDebt: (data: any, options?: any) => void;
   onUpdateDebt: (id: string, updates: Partial<DebtRecord>) => void;
   onDeleteDebt: (id: string) => void;
   onAddPayment: (debtId: string, payment: any) => void;
@@ -647,11 +647,11 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       <DebtModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSave={(data) => {
+        onSave={(data, options) => {
           if (editingDebt) {
             onUpdateDebt(editingDebt.id, data);
           } else {
-            onAddDebt(data);
+            onAddDebt(data, options);
           }
         }}
         members={members}

@@ -18,6 +18,7 @@ interface DebtPaymentModalProps {
       assetId?: string;
       recipientAssetId?: string;
       note?: string;
+      excludeFromStats?: boolean;
     }
   ) => void;
   onUpdatePayment?: (
@@ -46,6 +47,7 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
   const [recipientAssetId, setRecipientAssetId] = useState('');
   const [date, setDate] = useState('');
   const [note, setNote] = useState('');
+  const [excludeFromStats, setExcludeFromStats] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -56,12 +58,14 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
         setNote(editingPayment.note || '');
         setAssetId(editingPayment.assetId || '');
         setRecipientAssetId(editingPayment.recipientAssetId || '');
+        setExcludeFromStats(editingPayment.excludeFromStats !== false);
         setError('');
       } else {
         const remaining = Math.max(0, debt.amount - (debt.paidAmount || 0));
         setAmountInput(formatRupiah(remaining, { withPrefix: false }));
         setDate(new Date().toISOString().split('T')[0]);
         setNote('');
+        setExcludeFromStats(debt.excludeFromStats !== false);
         setError('');
         const payerId = debt.type === 'piutang' ? debt.otherMemberId : debt.memberId;
         const receiverId = debt.type === 'piutang' ? debt.memberId : debt.otherMemberId;
@@ -123,6 +127,7 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
         assetId: assetId || undefined,
         recipientAssetId: debt.partyType === 'internal' ? recipientAssetId || undefined : undefined,
         note: note.trim() || undefined,
+        excludeFromStats,
       });
     }
 
@@ -329,6 +334,25 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
                 className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+          </div>
+
+          {/* Opsi Kecualikan dari Statistik (Arus Kas Murni) */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-start gap-3">
+            <input
+              id="payment-exclude-stats"
+              type="checkbox"
+              checked={excludeFromStats}
+              onChange={(e) => setExcludeFromStats(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+            />
+            <label htmlFor="payment-exclude-stats" className="text-xs cursor-pointer select-none">
+              <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                Kecualikan dari Perhitungan Statistik (Arus Kas Murni)
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                Pembayaran/penerimaan ini hanya mencatat mutasi rekening, dan tidak dihitung sebagai beban belanja atau pendapatan di Statistik & Dashboard.
+              </span>
+            </label>
           </div>
 
           {/* Actions */}

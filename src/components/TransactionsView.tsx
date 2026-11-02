@@ -40,6 +40,7 @@ import {
   getEligibleAssetsForMember,
   getMemberColorTheme,
   groupTransactionsByDate,
+  isDebtTransaction,
   parseRupiahInput,
 } from '../utils/finance';
 import { CategoryIcon } from './CategoryIcon';
@@ -1337,17 +1338,29 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <span
-                            onClick={() => {
-                              setSpreadsheetEditingId(tx.id);
-                              setSpreadsheetTempAmount(formatRupiah(tx.amount, { withPrefix: false }));
-                              setSpreadsheetTempDesc(tx.description);
-                            }}
-                            className="font-normal text-slate-800 dark:text-slate-200 text-xs cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 truncate block max-w-md"
-                            title="Klik untuk ubah uraian"
-                          >
-                            {tx.description}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              onClick={() => {
+                                setSpreadsheetEditingId(tx.id);
+                                setSpreadsheetTempAmount(formatRupiah(tx.amount, { withPrefix: false }));
+                                setSpreadsheetTempDesc(tx.description);
+                              }}
+                              className="font-normal text-slate-800 dark:text-slate-200 text-xs cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 truncate max-w-md"
+                              title="Klik untuk ubah uraian"
+                            >
+                              {tx.description}
+                            </span>
+                            {tx.isTransfer && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800 shrink-0">
+                                🔁 Transfer
+                              </span>
+                            )}
+                            {(tx.excludeFromStats || isDebtTransaction(tx)) && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0" title="Dikecualikan dari statistik belanja murni">
+                                🤝 Hutang/Piutang
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -1614,6 +1627,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                   Transfer
                                 </span>
                               )}
+                              {(tx.excludeFromStats || isDebtTransaction(tx)) && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 shrink-0">
+                                  Hutang/Piutang
+                                </span>
+                              )}
                             </div>
 
                             {/* Member & Asset subtle tag */}
@@ -1720,6 +1738,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               {tx.isTransfer && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                                   Transfer
+                                </span>
+                              )}
+                              {(tx.excludeFromStats || isDebtTransaction(tx)) && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                  Hutang/Piutang
                                 </span>
                               )}
                               {tx.syncStatus === 'synced' ? (
