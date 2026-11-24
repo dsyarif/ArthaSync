@@ -130,6 +130,7 @@ export interface ReminderSettings {
 export interface SecuritySettings {
   biometricEnabled: boolean;
   pinCode: string; // 4-6 digits fallback
+  password?: string; // Sistem login password (default: "Yuga1418")
   isLocked: boolean;
   lockTimeoutMinutes: number; // 0 for immediate on blur, or e.g. 5 mins
   credentialId?: string;

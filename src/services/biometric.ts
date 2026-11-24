@@ -1,30 +1,54 @@
 import { SecuritySettings } from '../types/finance';
 
 const SECURITY_KEY = 'arthasync_security_settings_v1';
+export const DEFAULT_APP_PASSWORD = 'Yuga1418';
 
 const DEFAULT_SETTINGS: SecuritySettings = {
   biometricEnabled: true,
   pinCode: '1234',
-  isLocked: false,
+  password: DEFAULT_APP_PASSWORD,
+  isLocked: true,
   lockTimeoutMinutes: 5,
 };
 
 export class BiometricService {
   private static listeners: Set<(settings: SecuritySettings) => void> = new Set();
   private static lockTimer: any = null;
+  private static isSessionUnlocked: boolean = false;
 
   public static getSettings(): SecuritySettings {
     try {
-      const data = localStorage.getItem(SECURITY_KEY);
-      if (!data) return DEFAULT_SETTINGS;
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
+      let data: string | null = null;
+      if (typeof localStorage !== 'undefined') {
+        data = localStorage.getItem(SECURITY_KEY);
+      }
+      if (!data) {
+        return {
+          ...DEFAULT_SETTINGS,
+          isLocked: !this.isSessionUnlocked,
+        };
+      }
+      const parsed = JSON.parse(data);
+      const password = parsed.password || DEFAULT_APP_PASSWORD;
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        password,
+        // Always require login on initial open/session until unlocked
+        isLocked: !this.isSessionUnlocked ? true : (parsed.isLocked ?? true),
+      };
     } catch {
-      return DEFAULT_SETTINGS;
+      return {
+        ...DEFAULT_SETTINGS,
+        isLocked: !this.isSessionUnlocked,
+      };
     }
   }
 
   public static saveSettings(settings: SecuritySettings) {
-    localStorage.setItem(SECURITY_KEY, JSON.stringify(settings));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SECURITY_KEY, JSON.stringify(settings));
+    }
     this.listeners.forEach((cb) => cb(settings));
   }
 
@@ -47,23 +71,32 @@ export class BiometricService {
   }
 
   public static lockApp() {
+    this.isSessionUnlocked = false;
     const current = this.getSettings();
     this.saveSettings({ ...current, isLocked: true });
   }
 
   public static unlockApp() {
+    this.isSessionUnlocked = true;
     const current = this.getSettings();
     this.saveSettings({ ...current, isLocked: false });
     this.resetInactivityTimer();
   }
 
-  public static verifyPin(inputPin: string): boolean {
+  public static verifyPassword(inputPassword: string): boolean {
     const settings = this.getSettings();
-    const isValid = settings.pinCode === inputPin;
+    const correctPassword = settings.password || DEFAULT_APP_PASSWORD;
+    const trimmedInput = inputPassword.trim();
+    // Allow matching password (e.g. Yuga1418) or fallback PIN
+    const isValid = trimmedInput === correctPassword || trimmedInput === settings.pinCode;
     if (isValid) {
       this.unlockApp();
     }
     return isValid;
+  }
+
+  public static verifyPin(inputPin: string): boolean {
+    return this.verifyPassword(inputPin);
   }
 
   /**
@@ -96,7 +129,7 @@ export class BiometricService {
     // Fallback simulation for environments without hardware platform authenticator
     return {
       success: false,
-      message: 'Sensor sidik jari hardware tidak merespons, silakan masukkan PIN alternatif.',
+      message: 'Sensor sidik jari hardware tidak merespons, silakan masukkan kata sandi login.',
     };
   }
 
@@ -126,5 +159,15 @@ export class BiometricService {
     this.lockTimer = setTimeout(() => {
       this.lockApp();
     }, timeoutMs);
+    if (this.lockTimer && typeof this.lockTimer.unref === 'function') {
+      this.lockTimer.unref();
+    }
+  }
+
+  public static clearInactivityTimer() {
+    if (this.lockTimer) {
+      clearTimeout(this.lockTimer);
+      this.lockTimer = null;
+    }
   }
 }

@@ -15,6 +15,7 @@ import {
   Bell,
   Sun,
   Moon,
+  Lock,
   Fingerprint,
   ChevronDown,
   Check,
@@ -278,10 +279,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={handleLockScreen}
-            title="Kunci Aplikasi (Biometrik / PIN)"
+            title="Kunci Aplikasi / Logout (Password: Yuga1418)"
+            aria-label="Kunci Aplikasi / Logout"
             className="p-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
           >
-            <Fingerprint className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           </button>
         </div>
       </div>
