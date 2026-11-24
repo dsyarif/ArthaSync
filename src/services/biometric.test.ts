@@ -60,11 +60,15 @@ test('Custom password can be configured and verified', () => {
   BiometricService.saveSettings({ ...current, password: DEFAULT_APP_PASSWORD });
 });
 
-test('verifyPin accepts fallback pin and unlocks app', () => {
+test('verifyPassword rejects old numeric PIN 1234 and requires Yuga1418', () => {
   BiometricService.lockApp();
   assert.equal(BiometricService.getSettings().isLocked, true);
 
-  const pinOk = BiometricService.verifyPin('1234');
-  assert.equal(pinOk, true);
+  const pinRejected = BiometricService.verifyPassword('1234');
+  assert.equal(pinRejected, false);
+  assert.equal(BiometricService.getSettings().isLocked, true);
+
+  const passwordOk = BiometricService.verifyPassword('Yuga1418');
+  assert.equal(passwordOk, true);
   assert.equal(BiometricService.getSettings().isLocked, false);
 });

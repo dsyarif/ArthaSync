@@ -279,7 +279,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={handleLockScreen}
-            title="Kunci Aplikasi / Logout (Password: Yuga1418)"
+            title="Kunci Aplikasi / Logout"
             aria-label="Kunci Aplikasi / Logout"
             className="p-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
           >

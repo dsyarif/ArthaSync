@@ -87,8 +87,7 @@ export class BiometricService {
     const settings = this.getSettings();
     const correctPassword = settings.password || DEFAULT_APP_PASSWORD;
     const trimmedInput = inputPassword.trim();
-    // Allow matching password (e.g. Yuga1418) or fallback PIN
-    const isValid = trimmedInput === correctPassword || trimmedInput === settings.pinCode;
+    const isValid = trimmedInput === correctPassword;
     if (isValid) {
       this.unlockApp();
     }
